@@ -72,7 +72,6 @@ def fetch_data(ticker, growth_2027):
         "undervaluation": undervaluation
     }
 
-# Inmatningsformulär
 with st.sidebar:
     st.header("➕ Lägg till bolag")
     ticker = st.text_input("Ticker (ex: NVDA)")
@@ -88,7 +87,6 @@ with st.sidebar:
         else:
             st.warning("Ange en giltig ticker.")
 
-# Visa bolagstabell
 if st.session_state.companies:
     df = pd.DataFrame(st.session_state.companies)
     df["undervaluation"] = df["undervaluation"].map(lambda x: f"{x:.1f} %" if x else "-")
