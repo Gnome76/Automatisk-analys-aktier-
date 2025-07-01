@@ -8,7 +8,6 @@ import yfinance as yf
 init_db()
 
 st.set_page_config(page_title="Målkurs 2027 – Aktieanalys", layout="wide")
-
 st.title("📊 Målkurs 2027 – Aktieanalys per ticker")
 
 # Inmatning av ticker
@@ -21,13 +20,12 @@ with st.sidebar:
                 data = fetch_data(ticker_input)
                 save_company(data)
                 st.success(f"{data['name']} ({data['ticker']}) tillagd!")
-                st.experimental_rerun()
             except Exception as e:
                 st.error(f"Kunde inte hämta data: {e}")
         else:
             st.warning("Ange en giltig ticker-symbol.")
 
-# Knapp: Uppdatera alla bolag
+# Uppdatera alla bolag
 st.markdown("### 🔄 Uppdatera samtliga bolag i databasen")
 if st.button("Uppdatera alla"):
     companies = load_companies()
@@ -37,8 +35,7 @@ if st.button("Uppdatera alla"):
             save_company(updated)
         except:
             st.warning(f"Kunde inte uppdatera {row['ticker']}")
-    st.success("Alla bolag uppdaterade!")
-    st.experimental_rerun()
+    st.success("Alla bolag uppdaterade! Ladda om sidan manuellt om du inte ser förändringar.")
 
 # Läs in bolag
 df = load_companies()
@@ -46,19 +43,17 @@ df = load_companies()
 if df.empty:
     st.info("Inga bolag tillagda ännu.")
 else:
-    # Nuvarande pris via yfinance (live)
-    st.subheader("📈 Sammanställning")
+    # Aktuell aktiekurs med säker hantering
     tickers = list(df["ticker"])
-    prices = yf.download(tickers=tickers, period="1d", progress=False)["Adj Close"]
-    if isinstance(prices, pd.Series):
-        prices = prices.to_frame().T
-    latest_prices = prices.iloc[-1].to_dict()
+    raw = yf.download(tickers=tickers, period="1d", progress=False)
 
-    # Beräkna undervärdering
-    df["current_price"] = df["ticker"].map(latest_prices)
+    if isinstance(raw.columns, pd.MultiIndex):
+        prices = raw["Adj Close"].iloc[-1].to_dict()
+    else:
+        prices = {tickers[0]: raw["Adj Close"].iloc[-1]}
+
+    df["current_price"] = df["ticker"].map(prices)
     df["undervaluation_%"] = ((df["target_price_base"] - df["current_price"]) / df["current_price"]) * 100
-
-    # Sortera efter mest undervärderad
     df.sort_values(by="undervaluation_%", ascending=False, inplace=True)
 
     def color_row(row):
@@ -69,7 +64,6 @@ else:
         else:
             return [""] * len(row)
 
-    # Visa tabell
     styled_df = df[[
         "ticker", "name", "currency", "revenue_ttm", "ps_avg", "revenue_2027",
         "target_price_low", "target_price_base", "target_price_high",
@@ -93,4 +87,3 @@ else:
     if st.button("Ta bort"):
         delete_company(selected)
         st.success(f"{selected} borttagen")
-        st.experimental_rerun()
