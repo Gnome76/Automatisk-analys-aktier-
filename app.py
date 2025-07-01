@@ -21,7 +21,10 @@ def fetch_data(ticker, g25, g26, g27):
     revenue_2026 = revenue_2025 * (1 + g26 / 100)
     revenue_2027 = revenue_2026 * (1 + g27 / 100)
 
-    ps_avg = info.get("trailingPegRatio") or 5
+    # ✅ Korrekt P/S TTM
+    ps_avg = info.get("priceToSalesTrailing12Months") or 5
+
+    # Målkurs
     target_price = (revenue_2027 / shares) * ps_avg
 
     # Aktuell kurs
