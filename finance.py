@@ -1,33 +1,52 @@
 import yfinance as yf
-from datetime import datetime
 
-def fetch_data(ticker):
+def fetch_data(ticker, growth_2027):
     stock = yf.Ticker(ticker)
     info = stock.info
-
-    name = info.get("shortName", ticker)
+    name = info.get("longName", ticker)
     currency = info.get("currency", "USD")
-    market_cap = info.get("marketCap", 0)
+    shares = info.get("sharesOutstanding", 1)
     revenue_ttm = info.get("totalRevenue", 0)
-    shares_outstanding = info.get("sharesOutstanding", 0)
 
-    ps_avg = market_cap / revenue_ttm if revenue_ttm else 0
-    revenue_2027 = revenue_ttm * 4
-    target_price_base = (revenue_2027 / shares_outstanding) * ps_avg if shares_outstanding else 0
-    target_price_low = target_price_base * 0.7
-    target_price_high = target_price_base * 1.3
+    # Tillväxtprognoser från analyst estimates (2025 & 2026)
+    growth_2025 = None
+    growth_2026 = None
+
+    try:
+        analysis = stock.analysis
+        if "Revenue Estimate" in analysis.index:
+            if "2025" in analysis.columns:
+                rev_2025 = analysis.loc["Revenue Estimate", "2025"]
+                growth_2025 = ((rev_2025 - revenue_ttm) / revenue_ttm) * 100
+            if "2026" in analysis.columns:
+                rev_2026 = analysis.loc["Revenue Estimate", "2026"]
+                growth_2026 = ((rev_2026 - rev_2025) / rev_2025) * 100 if rev_2025 else None
+    except:
+        pass
+
+    # Fallback om ingen tillväxtdata finns
+    growth_2025 = growth_2025 or 20.0
+    growth_2026 = growth_2026 or 20.0
+
+    # Omsättning 2027
+    revenue_2025 = revenue_ttm * (1 + growth_2025 / 100)
+    revenue_2026 = revenue_2025 * (1 + growth_2026 / 100)
+    revenue_2027 = revenue_2026 * (1 + growth_2027 / 100)
+
+    # Snitt P/S på senaste 4 kvartal (fallback = 5)
+    ps_avg = info.get("trailingPegRatio", 5)
+
+    target_price = (revenue_2027 / shares) * ps_avg
 
     return {
-        "ticker": ticker.upper(),
+        "ticker": ticker,
         "name": name,
         "currency": currency,
-        "market_cap": market_cap,
         "revenue_ttm": revenue_ttm,
-        "shares_outstanding": shares_outstanding,
-        "ps_avg": ps_avg,
+        "growth_2025": growth_2025,
+        "growth_2026": growth_2026,
+        "growth_2027": growth_2027,
         "revenue_2027": revenue_2027,
-        "target_price_low": target_price_low,
-        "target_price_base": target_price_base,
-        "target_price_high": target_price_high,
-        "last_updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        "ps_avg": ps_avg,
+        "target_price_base": target_price
     }
