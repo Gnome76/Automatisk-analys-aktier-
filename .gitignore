@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
-database.db
+venv/
+.mypy_cache/
+.mnt/data/database.db
