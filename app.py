@@ -4,13 +4,11 @@ from database import init_db, save_company, load_companies, delete_company
 from finance import fetch_data
 import yfinance as yf
 
-# Initiera databasen
 init_db()
-
 st.set_page_config(page_title="Målkurs 2027 – Aktieanalys", layout="wide")
 st.title("📊 Målkurs 2027 – Aktieanalys per ticker")
 
-# Inmatning av ticker
+# Lägg till bolag
 with st.sidebar:
     st.header("➕ Lägg till bolag")
     ticker_input = st.text_input("Ange ticker-symbol (t.ex. AAPL, SOUN, EMBRAC.ST)")
@@ -25,8 +23,8 @@ with st.sidebar:
         else:
             st.warning("Ange en giltig ticker-symbol.")
 
-# Knapp: Uppdatera alla bolag
-st.markdown("### 🔄 Uppdatera samtliga bolag i databasen")
+# Uppdatera alla bolag
+st.markdown("### 🔄 Uppdatera samtliga bolag")
 if st.button("Uppdatera alla"):
     companies = load_companies()
     for _, row in companies.iterrows():
@@ -35,9 +33,9 @@ if st.button("Uppdatera alla"):
             save_company(updated)
         except Exception as e:
             st.warning(f"Kunde inte uppdatera {row['ticker']}: {e}")
-    st.success("Alla bolag uppdaterade! Ladda om sidan för att se uppdatering.")
+    st.success("Alla bolag uppdaterade! Ladda om sidan.")
 
-# Läs in bolag från databas
+# Visa tabell
 df = load_companies()
 
 if df.empty:
@@ -48,7 +46,6 @@ else:
     tickers = list(df["ticker"])
     raw = yf.download(tickers=tickers, period="1d", progress=False)
 
-    # Robust prisextraktion
     if isinstance(raw.columns, pd.MultiIndex):
         prices = raw["Adj Close"].iloc[-1].to_dict()
     else:
@@ -84,9 +81,8 @@ else:
 
     st.dataframe(styled_df, use_container_width=True)
 
-    # Ta bort bolag
     st.subheader("🗑 Ta bort bolag")
     selected = st.selectbox("Välj ticker att ta bort", df["ticker"])
     if st.button("Ta bort"):
         delete_company(selected)
-        st.success(f"{selected} borttagen! Ladda om sidan för att uppdatera.")
+        st.success(f"{selected} borttagen. Ladda om sidan.")
