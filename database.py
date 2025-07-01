@@ -1,9 +1,7 @@
 import sqlite3
 import pandas as pd
-from pathlib import Path
 
-# Dynamisk sökväg: fungerar både lokalt och i Streamlit Cloud
-DB_PATH = str(Path(__file__).parent / "database.db")
+DB_PATH = "/mnt/data/database.db"  # OBS: korrekt för Streamlit Cloud
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
