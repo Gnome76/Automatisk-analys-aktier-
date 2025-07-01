@@ -5,10 +5,12 @@ import time
 from datetime import timedelta
 
 st.set_page_config(page_title="Målkurs 2027", layout="wide")
-st.title("📊 Målkurs 2027 – Ett bolag i taget")
+st.title("📊 Målkurs 2027 – Bläddra mellan bolag")
 
 if "companies" not in st.session_state:
     st.session_state.companies = []
+if "current_index" not in st.session_state:
+    st.session_state.current_index = 0
 
 def fetch_data(ticker, g25, g26, g27):
     stock = yf.Ticker(ticker)
@@ -76,7 +78,7 @@ def fetch_data(ticker, g25, g26, g27):
         "undervaluation": undervaluation
     }
 
-# ➕ Lägg till bolag
+# ➕ Lägg till nytt bolag
 with st.sidebar:
     st.header("Lägg till nytt bolag")
     ticker = st.text_input("Ticker (ex: NVDA)").upper()
@@ -95,50 +97,69 @@ with st.sidebar:
         else:
             st.warning("Ange en ticker.")
 
-# 📊 Visa ett bolag i taget
+# 🔁 Sortera efter undervaluation
 if st.session_state.companies:
     sorted_companies = sorted(
         st.session_state.companies,
         key=lambda x: x["undervaluation"] if x["undervaluation"] is not None else -float("inf"),
         reverse=True
     )
+    st.session_state.sorted = sorted_companies
 
-    tickers = [c["ticker"] for c in sorted_companies]
-    selected_ticker = st.selectbox("Välj bolag att visa (mest undervärderad först):", tickers)
-    company = next((c for c in sorted_companies if c["ticker"] == selected_ticker), None)
+    # Justera index om utanför gränser
+    if st.session_state.current_index >= len(sorted_companies):
+        st.session_state.current_index = len(sorted_companies) - 1
 
-    if company:
-        st.markdown(f"### {company['ticker']} – {company['name']} ({company['currency']})")
+    company = sorted_companies[st.session_state.current_index]
+    total = len(sorted_companies)
+    current = st.session_state.current_index + 1
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            g25 = st.number_input("Tillväxt 2025 (%)", value=company["growth_2025"], key="g25")
-        with col2:
-            g26 = st.number_input("Tillväxt 2026 (%)", value=company["growth_2026"], key="g26")
-        with col3:
-            g27 = st.number_input("Tillväxt 2027 (%)", value=company["growth_2027"], key="g27")
+    st.markdown(f"### {company['ticker']} – {company['name']} ({company['currency']})")
+    st.markdown(f"**Bolag {current} av {total}**")
 
-        col4, col5 = st.columns(2)
-        with col4:
-            if st.button("🔄 Uppdatera bolaget"):
-                try:
-                    updated = fetch_data(company["ticker"], g25, g26, g27)
-                    index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
-                    st.session_state.companies[index] = updated
-                    st.success("Bolaget uppdaterat.")
-                except Exception as e:
-                    st.error(f"Fel vid uppdatering: {e}")
-        with col5:
-            if st.button("🗑️ Ta bort bolaget"):
-                index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
-                st.session_state.companies.pop(index)
-                st.experimental_rerun()
+    # Tillväxtinmatning
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        g25 = st.number_input("Tillväxt 2025 (%)", value=company["growth_2025"], key="g25")
+    with col2:
+        g26 = st.number_input("Tillväxt 2026 (%)", value=company["growth_2026"], key="g26")
+    with col3:
+        g27 = st.number_input("Tillväxt 2027 (%)", value=company["growth_2027"], key="g27")
 
-        st.markdown(f"""
-        **Aktuell kurs:** {company['current_price']:.2f} {company['currency']}  
-        **Målkurs 2027:** {company['target_price']:.2f} {company['currency']}  
-        **Undervärdering:** {company['undervaluation']:.1f}%  
-        **P/S TTM-snitt:** {company['ps_avg']:.2f}
-        """)
+    col4, col5 = st.columns(2)
+    with col4:
+        if st.button("🔄 Uppdatera bolaget"):
+            try:
+                updated = fetch_data(company["ticker"], g25, g26, g27)
+                original_index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
+                st.session_state.companies[original_index] = updated
+                st.success("Bolaget uppdaterat.")
+            except Exception as e:
+                st.error(f"Fel vid uppdatering: {e}")
+    with col5:
+        if st.button("🗑️ Ta bort bolaget"):
+            original_index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
+            st.session_state.companies.pop(original_index)
+            st.session_state.current_index = max(0, st.session_state.current_index - 1)
+            st.experimental_rerun()
+
+    # Visning
+    st.markdown(f"""
+    **Aktuell kurs:** {company['current_price']:.2f} {company['currency']}  
+    **Målkurs 2027:** {company['target_price']:.2f} {company['currency']}  
+    **Undervärdering:** {company['undervaluation']:.1f}%  
+    **P/S TTM-snitt:** {company['ps_avg']:.2f}
+    """)
+
+    # Navigering
+    nav1, nav2, nav3 = st.columns([1, 1, 1])
+    with nav1:
+        if st.button("⬅️ Föregående") and st.session_state.current_index > 0:
+            st.session_state.current_index -= 1
+            st.experimental_rerun()
+    with nav3:
+        if st.button("➡️ Nästa") and st.session_state.current_index < total - 1:
+            st.session_state.current_index += 1
+            st.experimental_rerun()
 else:
     st.info("Inga bolag tillagda ännu.")
