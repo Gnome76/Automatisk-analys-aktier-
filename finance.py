@@ -16,7 +16,7 @@ def fetch_data(ticker):
     else:
         ps_avg = 0
 
-    revenue_2027 = revenue_ttm * 4  # 4 års antagen tillväxt (≈ +42 %/år)
+    revenue_2027 = revenue_ttm * 4  # antagen tillväxt
     target_price_base = (revenue_2027 / shares_outstanding) * ps_avg
     target_price_low = target_price_base * 0.7
     target_price_high = target_price_base * 1.3
