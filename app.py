@@ -4,7 +4,7 @@ from database import init_db, save_company, load_companies, delete_company
 from finance import fetch_data
 import yfinance as yf
 
-# Initiera databas
+# Initiera databasen
 init_db()
 
 st.set_page_config(page_title="Målkurs 2027 – Aktieanalys", layout="wide")
@@ -49,20 +49,22 @@ else:
     prices = {}
 
     try:
-        raw = yf.download(tickers=tickers, period="1d", progress=False)
-
-        if isinstance(raw.columns, pd.MultiIndex):
-            if "Adj Close" in raw.columns.levels[0]:
-                prices = raw["Adj Close"].iloc[-1].to_dict()
-        elif "Adj Close" in raw.columns:
-            last_price = raw["Adj Close"].iloc[-1]
-            prices = {tickers[0]: last_price}
+        if len(tickers) == 1:
+            raw = yf.download(tickers=tickers[0], period="1d", progress=False)
+            if "Adj Close" in raw.columns:
+                prices[tickers[0]] = raw["Adj Close"].iloc[-1]
+        else:
+            raw = yf.download(tickers=tickers, period="1d", group_by="ticker", progress=False)
+            for ticker in tickers:
+                try:
+                    prices[ticker] = raw[ticker]["Adj Close"].iloc[-1]
+                except:
+                    continue
     except Exception as e:
-        st.error(f"Kunde inte hämta prisdata: {e}")
+        st.error(f"Fel vid prisinhämtning: {e}")
 
     df["current_price"] = df["ticker"].map(prices)
 
-    # Varning om pris saknas
     if df["current_price"].isna().any():
         st.warning("⚠️ Vissa priser kunde inte hämtas. Kontrollera ticker-symbolerna.")
 
