@@ -5,7 +5,7 @@ import time
 from datetime import timedelta
 
 st.set_page_config(page_title="Målkurs 2027", layout="wide")
-st.title("📊 Målkurs 2027 – Analys med verkligt P/S-snitt")
+st.title("📊 Målkurs 2027 – Analys med justerat P/S-snitt")
 
 if "companies" not in st.session_state:
     st.session_state.companies = []
@@ -30,7 +30,7 @@ def fetch_data(ticker, g25, g26, g27):
     except:
         revenues = pd.Series([revenue_ttm / 4] * 4)
 
-    # 💵 3. Hämta kurs vid kvartalsdatum
+    # 💵 3. Hämta kurs vid kvartalsdatum och justera P/S (×4)
     ps_values = []
     for date, revenue in revenues.items():
         try:
@@ -39,7 +39,7 @@ def fetch_data(ticker, g25, g26, g27):
             hist = stock.history(start=start, end=end)
             price = hist["Close"].mean()
             market_cap = price * shares
-            ps = market_cap / revenue if revenue > 0 else None
+            ps = market_cap / (revenue * 4) if revenue > 0 else None  # ✅ justering här
             if ps:
                 ps_values.append(ps)
         except:
