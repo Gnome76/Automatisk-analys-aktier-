@@ -5,7 +5,7 @@ import time
 from datetime import timedelta
 
 st.set_page_config(page_title="Målkurs 2027", layout="wide")
-st.title("📊 Målkurs 2027 – Analys med justerat P/S-snitt")
+st.title("📊 Målkurs 2027 – Analys med rullande P/S TTM")
 
 if "companies" not in st.session_state:
     st.session_state.companies = []
@@ -18,41 +18,43 @@ def fetch_data(ticker, g25, g26, g27):
     shares = info.get("sharesOutstanding") or 1
     revenue_ttm = info.get("totalRevenue") or 0
 
-    # 🔢 1. Manuell tillväxt
+    # 🔢 Tillväxt
     revenue_2025 = revenue_ttm * (1 + g25 / 100)
     revenue_2026 = revenue_2025 * (1 + g26 / 100)
     revenue_2027 = revenue_2026 * (1 + g27 / 100)
 
-    # 📊 2. Hämta kvartalsvisa omsättningar (senaste 4)
+    # 📊 Hämta minst 8 kvartal → 5 TTM-möjligheter
     try:
         financials = stock.quarterly_financials.T
-        revenues = financials["Total Revenue"].dropna().head(4)
+        revenues = financials["Total Revenue"].dropna().head(8)
     except:
-        revenues = pd.Series([revenue_ttm / 4] * 4)
+        revenues = pd.Series([revenue_ttm / 4] * 8)
 
-    # 💵 3. Hämta kurs vid kvartalsdatum och justera P/S (×4)
+    # 📈 Rullande TTM P/S – snitt
     ps_values = []
-    for date, revenue in revenues.items():
+    dates = revenues.index
+    for i in range(len(revenues) - 3):
+        ttm_revenue = revenues.iloc[i:i+4].sum()
+        date = dates[i]
         try:
             start = date - timedelta(days=3)
             end = date + timedelta(days=3)
             hist = stock.history(start=start, end=end)
             price = hist["Close"].mean()
             market_cap = price * shares
-            ps = market_cap / (revenue * 4) if revenue > 0 else None  # ✅ justering här
+            ps = market_cap / ttm_revenue if ttm_revenue > 0 else None
             if ps:
                 ps_values.append(ps)
         except:
             pass
         time.sleep(0.3)
 
-    # 📈 4. Snitt av 4 senaste P/S
     ps_avg = sum(ps_values) / len(ps_values) if ps_values else 5
 
-    # 🎯 5. Målkurs
+    # 🎯 Målkurs
     target_price = (revenue_2027 / shares) * ps_avg
 
-    # 💰 6. Aktuell kurs
+    # 💰 Aktuell kurs
     current_price = None
     try:
         hist = stock.history(period="1d")
@@ -99,7 +101,7 @@ with st.sidebar:
         else:
             st.warning("Ange en giltig ticker.")
 
-# 📈 Resultattabell
+# 📊 Visa resultat
 if st.session_state.companies:
     df = pd.DataFrame(st.session_state.companies)
     df["undervaluation"] = df["undervaluation"].map(lambda x: f"{x:.1f} %" if x is not None else "-")
