@@ -2,30 +2,37 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import gspread
-from gspread_dataframe import get_as_dataframe, set_with_dataframe
+from gspread_dataframe import set_with_dataframe
 import time
 from datetime import timedelta
 
-# Sheet-ID från din länk
+# === DINA INSTÄLLNINGAR ===
 SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
-SHEET_NAME = "Ark1"
+GID = "0"  # Oftast 0 för första fliken
+CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
 
-# Anslut till Google Sheet utan credentials.json (offentligt ark)
-gc = gspread.public()
-sh = gc.open_by_key(SHEET_ID)
-worksheet = sh.worksheet(SHEET_NAME)
-
+# === LADDA CSV-DATA ===
 def load_sheet_data():
     try:
-        df = get_as_dataframe(worksheet).dropna(subset=["ticker"])
+        df = pd.read_csv(CSV_URL)
+        df = df.dropna(subset=["ticker"])
         return df
-    except:
+    except Exception as e:
+        st.warning(f"Kunde inte läsa Google Sheet: {e}")
         return pd.DataFrame(columns=["ticker", "growth_2025", "growth_2026", "growth_2027"])
 
+# === SPARA TILLBAKA TILL GOOGLE SHEET ===
 def save_sheet_data(df):
-    worksheet.clear()
-    set_with_dataframe(worksheet, df)
+    try:
+        gc = gspread.Client()  # använder anonym tillgång till publikt ark
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.get_worksheet(0)
+        worksheet.clear()
+        set_with_dataframe(worksheet, df)
+    except Exception as e:
+        st.warning(f"Kunde inte spara till Google Sheet: {e}")
 
+# === DATAHÄMTNING & BERÄKNING ===
 def fetch_data(ticker, g25, g26, g27):
     stock = yf.Ticker(ticker)
     info = stock.info
@@ -92,9 +99,9 @@ def fetch_data(ticker, g25, g26, g27):
         "undervaluation": undervaluation
     }
 
-# ---------------- UI ----------------
+# === UI ===
 
-st.title("📊 Aktieanalys med Google Sheets")
+st.title("📊 Aktieanalys – Google Sheets")
 
 df = load_sheet_data()
 
@@ -112,7 +119,7 @@ with st.sidebar:
             "growth_2027": g27
         }, ignore_index=True)
         save_sheet_data(df)
-        st.success("Bolag tillagt.")
+        st.success("Bolag tillagt!")
 
 if st.button("🔄 Uppdatera alla bolag"):
     updated = []
