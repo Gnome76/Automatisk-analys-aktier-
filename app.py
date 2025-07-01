@@ -46,19 +46,26 @@ else:
     st.subheader("📈 Sammanställning")
 
     tickers = list(df["ticker"])
-    raw = yf.download(tickers=tickers, period="1d", progress=False)
+    prices = {}
 
-    # ✅ Säker hantering av prisdata
-    if isinstance(raw.columns, pd.MultiIndex):
-        if "Adj Close" in raw.columns.levels[0]:
-            prices = raw["Adj Close"].iloc[-1].to_dict()
-        else:
-            prices = {}
-    else:
-        last_price = raw["Adj Close"].iloc[-1] if "Adj Close" in raw.columns else None
-        prices = {tickers[0]: last_price}
+    try:
+        raw = yf.download(tickers=tickers, period="1d", progress=False)
+
+        if isinstance(raw.columns, pd.MultiIndex):
+            if "Adj Close" in raw.columns.levels[0]:
+                prices = raw["Adj Close"].iloc[-1].to_dict()
+        elif "Adj Close" in raw.columns:
+            last_price = raw["Adj Close"].iloc[-1]
+            prices = {tickers[0]: last_price}
+    except Exception as e:
+        st.error(f"Kunde inte hämta prisdata: {e}")
 
     df["current_price"] = df["ticker"].map(prices)
+
+    # Varning om pris saknas
+    if df["current_price"].isna().any():
+        st.warning("⚠️ Vissa priser kunde inte hämtas. Kontrollera ticker-symbolerna.")
+
     df["undervaluation_%"] = ((df["target_price_base"] - df["current_price"]) / df["current_price"]) * 100
     df.sort_values(by="undervaluation_%", ascending=False, inplace=True)
 
