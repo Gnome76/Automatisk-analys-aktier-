@@ -2,8 +2,7 @@ import sqlite3
 import pandas as pd
 from pathlib import Path
 
-# Spara databasen i samma mapp som koden körs från
-DB_PATH = str(Path(__file__).parent / "database.db")
+DB_PATH = str(Path(__file__).parent / "database.db")  # Lokal filväg (stabil)
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
