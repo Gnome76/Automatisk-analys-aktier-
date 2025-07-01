@@ -5,7 +5,7 @@ import time
 from datetime import timedelta
 
 st.set_page_config(page_title="Målkurs 2027", layout="wide")
-st.title("📊 Målkurs 2027 – Individuell uppdatering")
+st.title("📊 Målkurs 2027 – Sorterad analys")
 
 if "companies" not in st.session_state:
     st.session_state.companies = []
@@ -18,12 +18,10 @@ def fetch_data(ticker, g25, g26, g27):
     shares = info.get("sharesOutstanding") or 1
     revenue_ttm = info.get("totalRevenue") or 0
 
-    # Tillväxt
     revenue_2025 = revenue_ttm * (1 + g25 / 100)
     revenue_2026 = revenue_2025 * (1 + g26 / 100)
     revenue_2027 = revenue_2026 * (1 + g27 / 100)
 
-    # Rullande P/S (TTM)
     try:
         financials = stock.quarterly_financials.T
         revenues = financials["Total Revenue"].dropna().head(8)
@@ -78,7 +76,7 @@ def fetch_data(ticker, g25, g26, g27):
         "undervaluation": undervaluation
     }
 
-# ➕ Sidopanel
+# ➕ Lägg till nytt bolag
 with st.sidebar:
     st.header("Lägg till nytt bolag")
     ticker = st.text_input("Ticker (ex: NVDA)").upper()
@@ -97,11 +95,18 @@ with st.sidebar:
         else:
             st.warning("Ange en ticker.")
 
-# 📊 Visa analys
+# 📊 Visa bolag (sorterade)
 if st.session_state.companies:
-    st.subheader("📋 Analyserade bolag")
+    # Sortera efter mest undervärderad först
+    sorted_companies = sorted(
+        st.session_state.companies,
+        key=lambda x: x["undervaluation"] if x["undervaluation"] is not None else -float("inf"),
+        reverse=True
+    )
 
-    for i, company in enumerate(st.session_state.companies):
+    st.subheader("📋 Analyserade bolag (sorterade efter undervärdering)")
+
+    for i, company in enumerate(sorted_companies):
         st.markdown(f"### {company['ticker']} – {company['name']} ({company['currency']})")
 
         col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 1])
@@ -115,13 +120,15 @@ if st.session_state.companies:
             if st.button(f"🔄 Uppdatera – {company['ticker']}", key=f"update_{i}"):
                 try:
                     updated = fetch_data(company["ticker"], g25, g26, g27)
-                    st.session_state.companies[i] = updated
+                    index = st.session_state.companies.index(company)
+                    st.session_state.companies[index] = updated
                     st.success(f"{company['ticker']} uppdaterad.")
                 except Exception as e:
                     st.error(f"Fel vid uppdatering: {e}")
         with col5:
             if st.button(f"🗑️ Ta bort – {company['ticker']}", key=f"delete_{i}"):
-                st.session_state.companies.pop(i)
+                index = st.session_state.companies.index(company)
+                st.session_state.companies.pop(index)
                 st.experimental_rerun()
 
         st.markdown(f"""
