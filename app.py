@@ -8,7 +8,7 @@ from datetime import timedelta
 
 # === DINA INSTÄLLNINGAR ===
 SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
-GID = "0"  # Oftast 0 för första fliken
+GID = "0"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
 
 # === LADDA CSV-DATA ===
@@ -24,7 +24,7 @@ def load_sheet_data():
 # === SPARA TILLBAKA TILL GOOGLE SHEET ===
 def save_sheet_data(df):
     try:
-        gc = gspread.Client()  # använder anonym tillgång till publikt ark
+        gc = gspread.Client()  # Använder offentlig åtkomst (ark måste vara delat: "Alla med länken kan redigera")
         sh = gc.open_by_key(SHEET_ID)
         worksheet = sh.get_worksheet(0)
         worksheet.clear()
@@ -112,12 +112,13 @@ with st.sidebar:
     g26 = st.number_input("Tillväxt 2026 (%)", 0.0, 500.0, 30.0)
     g27 = st.number_input("Tillväxt 2027 (%)", 0.0, 500.0, 30.0)
     if st.button("Lägg till"):
-        df = df.append({
+        new_row = pd.DataFrame([{
             "ticker": ticker,
             "growth_2025": g25,
             "growth_2026": g26,
             "growth_2027": g27
-        }, ignore_index=True)
+        }])
+        df = pd.concat([df, new_row], ignore_index=True)
         save_sheet_data(df)
         st.success("Bolag tillagt!")
 
