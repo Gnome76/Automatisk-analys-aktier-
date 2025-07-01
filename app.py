@@ -13,8 +13,8 @@ def fetch_data(ticker, growth_2027):
     info = stock.info
     name = info.get("longName", ticker)
     currency = info.get("currency", "USD")
-    shares = info.get("sharesOutstanding", 1)
-    revenue_ttm = info.get("totalRevenue", 0)
+    shares = info.get("sharesOutstanding") or 1
+    revenue_ttm = info.get("totalRevenue") or 0
 
     # Analyst-estimat från Yahoo Finance
     growth_2025 = None
@@ -25,26 +25,34 @@ def fetch_data(ticker, growth_2027):
         if "Revenue Estimate" in analysis.index:
             if "2025" in analysis.columns:
                 rev_2025 = analysis.loc["Revenue Estimate", "2025"]
-                growth_2025 = ((rev_2025 - revenue_ttm) / revenue_ttm) * 100
-            if "2026" in analysis.columns:
+                if revenue_ttm:
+                    growth_2025 = ((rev_2025 - revenue_ttm) / revenue_ttm) * 100
+            if "2026" in analysis.columns and growth_2025 is not None:
                 rev_2026 = analysis.loc["Revenue Estimate", "2026"]
-                growth_2026 = ((rev_2026 - rev_2025) / rev_2025) * 100 if rev_2025 else None
+                if rev_2025:
+                    growth_2026 = ((rev_2026 - rev_2025) / rev_2025) * 100
     except:
         pass
 
     # Fallback om inget finns
-    growth_2025 = growth_2025 or 20.0
-    growth_2026 = growth_2026 or 20.0
+    growth_2025 = growth_2025 if growth_2025 is not None else 20.0
+    growth_2026 = growth_2026 if growth_2026 is not None else 20.0
 
-    # Beräkna framtida omsättning
-    revenue_2025 = revenue_ttm * (1 + growth_2025 / 100)
-    revenue_2026 = revenue_2025 * (1 + growth_2026 / 100)
-    revenue_2027 = revenue_2026 * (1 + growth_2027 / 100)
+    # Skydd för beräkning
+    try:
+        revenue_2025 = revenue_ttm * (1 + growth_2025 / 100)
+        revenue_2026 = revenue_2025 * (1 + growth_2026 / 100)
+        revenue_2027 = revenue_2026 * (1 + growth_2027 / 100)
+    except Exception as e:
+        raise ValueError(f"Kunde inte beräkna framtida omsättning: {e}")
 
-    ps_avg = info.get("trailingPegRatio", 5)
-    target_price = (revenue_2027 / shares) * ps_avg
+    ps_avg = info.get("trailingPegRatio") or 5
+    try:
+        target_price = (revenue_2027 / shares) * ps_avg
+    except Exception as e:
+        raise ValueError(f"Kunde inte beräkna målkurs: {e}")
 
-    # Försök hämta aktuell kurs
+    # Hämta aktuell kurs
     current_price = None
     try:
         hist = stock.history(period="1d")
@@ -55,7 +63,10 @@ def fetch_data(ticker, growth_2027):
 
     undervaluation = None
     if current_price:
-        undervaluation = ((target_price - current_price) / current_price) * 100
+        try:
+            undervaluation = ((target_price - current_price) / current_price) * 100
+        except:
+            undervaluation = None
 
     return {
         "ticker": ticker,
@@ -72,6 +83,7 @@ def fetch_data(ticker, growth_2027):
         "undervaluation": undervaluation
     }
 
+# Inmatningspanel
 with st.sidebar:
     st.header("➕ Lägg till bolag")
     ticker = st.text_input("Ticker (ex: NVDA)")
@@ -87,11 +99,13 @@ with st.sidebar:
         else:
             st.warning("Ange en giltig ticker.")
 
+# Visa resultat
 if st.session_state.companies:
     df = pd.DataFrame(st.session_state.companies)
-    df["undervaluation"] = df["undervaluation"].map(lambda x: f"{x:.1f} %" if x else "-")
-    df["target_price"] = df["target_price"].map(lambda x: f"{x:.2f}")
-    df["current_price"] = df["current_price"].map(lambda x: f"{x:.2f}" if x else "-")
+    df["undervaluation"] = df["undervaluation"].map(lambda x: f"{x:.1f} %" if x is not None else "-")
+    df["target_price"] = df["target_price"].map(lambda x: f"{x:.2f}" if x is not None else "-")
+    df["current_price"] = df["current_price"].map(lambda x: f"{x:.2f}" if x is not None else "-")
+
     st.subheader("📈 Analysresultat")
     st.dataframe(df[[
         "ticker", "name", "currency", "revenue_ttm", "growth_2025", "growth_2026", "growth_2027",
