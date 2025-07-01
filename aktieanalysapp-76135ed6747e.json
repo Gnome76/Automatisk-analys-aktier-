@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "aktieanalysapp",
+  "private_key_id": "76135ed6747e823a091f8d512cd920f414af691a",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDqqVcVoY6NvGUC\nkBqvdgEeHCcIIODb1VgQ8QU0OySfRxI2X/IH6cy1zcSraRpom4owIi0pZfhM5YeL\nYeESPPpsY+b62KUPvEaFqIuamLWZ1flzGaxQwVD1vr6QKceTDJxeHB3MRL04Nmn4\nOUnw/k3dqojD31I89UVn91GdhDCkp+np4+4tJ3Q9egsoJpLdM0fPrPn65VOCfA3a\nPazAYq6hC+Kma+cWj5kJI3GHwtoDdAj7bONu7MtHYFbSo2UgAPB/uSUFmwVbvv2D\nY4nxEY91DY51fQB2b172UMWCD/h+XQ6PTgIht5dyggn3HJ+V1cGesVbGpmoGikvl\nf/w8IV23AgMBAAECggEADPPq+CkyRrWS98i/iFbhqelQ6Dx0XP4SPeEn8eGf3GDe\navzxzakEoTZp+DI1gHexcYW5a3MS+R+kUzfEZi7SfeAn1EnYFp3EYMVUa2SphYPP\noKBWqCB7mQz91NRRjVbhXLp9lJRow20RfV+gKrrGzokGwpUVo4LAYYQ/z4uH6da1\n3LPTZJo0TGaRwuxzpAAC3ng5TV7zVN+qFv12zYHrnTPOpPBaFEl4Vf0Tzsta9Npb\nAwT/iypzhcQ+Ta92jU2dFhdRs9Ptec+tcpBK431tt94z3dC149C7yOT2xQhYXPdJ\nP4ISXV698wEz0wLDNz8wCeTb3foHzoc+5QznRq1P+QKBgQD6Y2/ei3lAhNLKnFim\neTF9LbKqmUlCwusnFES48p7qUhEWNZ4BT272FPWRMjO6BhXYTkxvcGuSbz9DTirX\nLjfe0oSnHeYCruP+EyU6GLcytQm2FicpomyAE/06ls6cRxuLWEc6XuDzDKi9krm0\nmiZzmAZACRIcYqNODEoSMzBJTwKBgQDv66wjIguNBZ81ZpnnsCRDrmQNYl7ETADt\nqYUxKS4V9w6fzfgt/GBRd+sWKWOM0JXtxlrCvw/7OeAJS/HMDyRdzrhPZpVSGCm1\nONnlkX4ezs+aPNS1xzGR4WOGP6MPw+4rTSdptzmfbTu2UL4MxhXlmnkArD+lUQfD\nIE95MOs7GQKBgEh54/XM9WoBiGpxWw/E4NhVE/Rhrl0OwrZrHYFTaUB2RM/i8Tt7\n3KiKZJKEr4hXHpegAmv3ZIvce7lltOzYSf/Le+5LrzpzmTcAH7RzVwPsd0UnoGpi\nw3lHT/NXl7KQup5ZDTUOJZr0vRsyj2KBhEPNa3G5rm5c9twunnoqKv3tAoGAGgVx\nkg3rOsxVTDFol9xe0ohjiaAVryyfHSe5rm9M9EzrZSGtvS8WMz/SW4D5rxggar2M\nsnqOfSz1w4xdGUi7JQF6tAHoSBMe0uzrlR6Gk0jS82ONnnmQQsYzSSg1w0v41PF1\nSN36ffQW+dsgAbqqPVDXtt73uDJlqSAj/nzzxmECgYB8Myo6DBNcPzatDcl5TWbP\n1vEtYjQMB/EC/lD0hZdT8uJ6DnOUVABexwKBVhZfo2ioG4rWA95w4mYzlVRB0K1A\nUGcUQBa9HifvISdaL6+yfZJGz0AYoplXWA8RXWjY1IQVJs/e4vSXXUSh43F81Hyo\nxHJwrbMPH/N5V69ZeOiL5A==\n-----END PRIVATE KEY-----\n",
+  "client_email": "streamlit-writer@aktieanalysapp.iam.gserviceaccount.com",
+  "client_id": "111001389141507488176",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-writer%40aktieanalysapp.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
