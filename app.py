@@ -2,37 +2,33 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import gspread
-from gspread_dataframe import set_with_dataframe
-import time
+from gspread_dataframe import set_with_dataframe, get_as_dataframe
 from datetime import timedelta
+import time
 
-# === DINA INSTÄLLNINGAR ===
+# === GOOGLE SHEET ===
 SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
-GID = "0"
-CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
+gc = gspread.service_account(filename="aktieanalysapp-76135ed6747e.json")
+sh = gc.open_by_key(SHEET_ID)
+worksheet = sh.sheet1
 
-# === LADDA CSV-DATA ===
-def load_sheet_data():
+# === LADDA OCH SPARA DATA ===
+def load_data():
     try:
-        df = pd.read_csv(CSV_URL)
-        df = df.dropna(subset=["ticker"])
+        df = get_as_dataframe(worksheet).dropna(subset=["ticker"])
         return df
     except Exception as e:
-        st.warning(f"Kunde inte läsa Google Sheet: {e}")
+        st.error(f"Kunde inte läsa Google Sheet: {e}")
         return pd.DataFrame(columns=["ticker", "growth_2025", "growth_2026", "growth_2027"])
 
-# === SPARA TILLBAKA TILL GOOGLE SHEET ===
-def save_sheet_data(df):
+def save_data(df):
     try:
-        gc = gspread.Client()  # Använder offentlig åtkomst (ark måste vara delat: "Alla med länken kan redigera")
-        sh = gc.open_by_key(SHEET_ID)
-        worksheet = sh.get_worksheet(0)
         worksheet.clear()
         set_with_dataframe(worksheet, df)
     except Exception as e:
-        st.warning(f"Kunde inte spara till Google Sheet: {e}")
+        st.error(f"Kunde inte spara till Google Sheet: {e}")
 
-# === DATAHÄMTNING & BERÄKNING ===
+# === HÄMTA DATA OCH RÄKNA ===
 def fetch_data(ticker, g25, g26, g27):
     stock = yf.Ticker(ticker)
     info = stock.info
@@ -45,6 +41,7 @@ def fetch_data(ticker, g25, g26, g27):
     revenue_2026 = revenue_2025 * (1 + g26 / 100)
     revenue_2027 = revenue_2026 * (1 + g27 / 100)
 
+    # Hämta 8 senaste kvartalens omsättning
     try:
         financials = stock.quarterly_financials.T
         revenues = financials["Total Revenue"].dropna().head(8)
@@ -57,9 +54,7 @@ def fetch_data(ticker, g25, g26, g27):
         ttm_revenue = revenues.iloc[i:i+4].sum()
         date = dates[i]
         try:
-            start = date - timedelta(days=3)
-            end = date + timedelta(days=3)
-            hist = stock.history(start=start, end=end)
+            hist = stock.history(start=date - timedelta(days=3), end=date + timedelta(days=3))
             price = hist["Close"].mean()
             market_cap = price * shares
             ps = market_cap / ttm_revenue if ttm_revenue > 0 else None
@@ -100,10 +95,9 @@ def fetch_data(ticker, g25, g26, g27):
     }
 
 # === UI ===
+st.title("📈 Aktieanalys med Google Sheet (live)")
 
-st.title("📊 Aktieanalys – Google Sheets")
-
-df = load_sheet_data()
+df = load_data()
 
 with st.sidebar:
     st.header("Lägg till nytt bolag")
@@ -119,7 +113,7 @@ with st.sidebar:
             "growth_2027": g27
         }])
         df = pd.concat([df, new_row], ignore_index=True)
-        save_sheet_data(df)
+        save_data(df)
         st.success("Bolag tillagt!")
 
 if st.button("🔄 Uppdatera alla bolag"):
@@ -132,7 +126,7 @@ if st.button("🔄 Uppdatera alla bolag"):
             st.warning(f"Kunde inte hämta data för {row['ticker']}")
     if updated:
         df_updated = pd.DataFrame(updated)
-        save_sheet_data(df_updated)
+        save_data(df_updated)
         st.success("Alla bolag uppdaterade.")
         df = df_updated
 
