@@ -2,7 +2,9 @@ import sqlite3
 import os
 import pandas as pd
 
+# Se till att mappen finns
 DB_PATH = "/mnt/data/database.db"
+os.makedirs("/mnt/data", exist_ok=True)
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
