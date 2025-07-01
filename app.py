@@ -4,11 +4,13 @@ from database import init_db, save_company, load_companies, delete_company
 from finance import fetch_data
 import yfinance as yf
 
+# Initiera databas
 init_db()
+
 st.set_page_config(page_title="Målkurs 2027 – Aktieanalys", layout="wide")
 st.title("📊 Målkurs 2027 – Aktieanalys per ticker")
 
-# Lägg till bolag
+# ➕ Lägg till bolag
 with st.sidebar:
     st.header("➕ Lägg till bolag")
     ticker_input = st.text_input("Ange ticker-symbol (t.ex. AAPL, SOUN, EMBRAC.ST)")
@@ -23,7 +25,7 @@ with st.sidebar:
         else:
             st.warning("Ange en giltig ticker-symbol.")
 
-# Uppdatera alla bolag
+# 🔄 Uppdatera alla bolag
 st.markdown("### 🔄 Uppdatera samtliga bolag")
 if st.button("Uppdatera alla"):
     companies = load_companies()
@@ -35,7 +37,7 @@ if st.button("Uppdatera alla"):
             st.warning(f"Kunde inte uppdatera {row['ticker']}: {e}")
     st.success("Alla bolag uppdaterade! Ladda om sidan.")
 
-# Visa tabell
+# 📈 Visa alla bolag
 df = load_companies()
 
 if df.empty:
@@ -46,8 +48,12 @@ else:
     tickers = list(df["ticker"])
     raw = yf.download(tickers=tickers, period="1d", progress=False)
 
+    # ✅ Säker hantering av prisdata
     if isinstance(raw.columns, pd.MultiIndex):
-        prices = raw["Adj Close"].iloc[-1].to_dict()
+        if "Adj Close" in raw.columns.levels[0]:
+            prices = raw["Adj Close"].iloc[-1].to_dict()
+        else:
+            prices = {}
     else:
         last_price = raw["Adj Close"].iloc[-1] if "Adj Close" in raw.columns else None
         prices = {tickers[0]: last_price}
@@ -81,6 +87,7 @@ else:
 
     st.dataframe(styled_df, use_container_width=True)
 
+    # 🗑 Ta bort bolag
     st.subheader("🗑 Ta bort bolag")
     selected = st.selectbox("Välj ticker att ta bort", df["ticker"])
     if st.button("Ta bort"):
