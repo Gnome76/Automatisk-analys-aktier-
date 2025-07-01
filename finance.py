@@ -11,13 +11,9 @@ def fetch_data(ticker):
     revenue_ttm = info.get("totalRevenue", 0)
     shares_outstanding = info.get("sharesOutstanding", 0)
 
-    if revenue_ttm and market_cap:
-        ps_avg = market_cap / revenue_ttm
-    else:
-        ps_avg = 0
-
-    revenue_2027 = revenue_ttm * 4  # antagen tillväxt
-    target_price_base = (revenue_2027 / shares_outstanding) * ps_avg
+    ps_avg = market_cap / revenue_ttm if revenue_ttm else 0
+    revenue_2027 = revenue_ttm * 4
+    target_price_base = (revenue_2027 / shares_outstanding) * ps_avg if shares_outstanding else 0
     target_price_low = target_price_base * 0.7
     target_price_high = target_price_base * 1.3
 
