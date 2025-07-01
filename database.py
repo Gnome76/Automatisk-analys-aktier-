@@ -1,8 +1,8 @@
 import sqlite3
 import pandas as pd
 
-# Korrekt sökväg för permanent lagring i Streamlit Cloud
-DB_PATH = "/mount/data/database.db"
+# Korrekt sökväg för Streamlit Cloud (med permanent lagring)
+DB_PATH = "/mnt/data/database.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
