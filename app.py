@@ -11,10 +11,6 @@ if "companies" not in st.session_state:
     st.session_state.companies = []
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
-if "deleted" not in st.session_state:
-    st.session_state.deleted = False
-if "navigated" not in st.session_state:
-    st.session_state.navigated = False
 
 def fetch_data(ticker, g25, g26, g27):
     stock = yf.Ticker(ticker)
@@ -97,27 +93,23 @@ with st.sidebar:
                 st.session_state.companies.append(data)
                 st.session_state.current_index = len(st.session_state.companies) - 1
                 st.success(f"{data['name']} tillagd.")
+                st.rerun()
             except Exception as e:
                 st.error(f"Kunde inte hämta data: {e}")
         else:
             st.warning("Ange en ticker.")
 
-# 🔁 Sortering och indexjustering
+# 🔁 Sortering och visning
 if st.session_state.companies:
     sorted_companies = sorted(
         st.session_state.companies,
         key=lambda x: x["undervaluation"] if x["undervaluation"] is not None else -float("inf"),
         reverse=True
     )
-    st.session_state.sorted = sorted_companies
 
-    if st.session_state.deleted or st.session_state.navigated:
-        st.session_state.deleted = False
-        st.session_state.navigated = False
-        st.stop()
-
+    # Begränsa index
     if st.session_state.current_index >= len(sorted_companies):
-        st.session_state.current_index = max(0, len(sorted_companies) - 1)
+        st.session_state.current_index = len(sorted_companies) - 1
 
     company = sorted_companies[st.session_state.current_index]
     total = len(sorted_companies)
@@ -126,7 +118,6 @@ if st.session_state.companies:
     st.markdown(f"### {company['ticker']} – {company['name']} ({company['currency']})")
     st.markdown(f"**Bolag {current} av {total}**")
 
-    # Tillväxtinmatning
     col1, col2, col3 = st.columns(3)
     with col1:
         g25 = st.number_input("Tillväxt 2025 (%)", value=company["growth_2025"], key="g25")
@@ -140,19 +131,23 @@ if st.session_state.companies:
         if st.button("🔄 Uppdatera bolaget"):
             try:
                 updated = fetch_data(company["ticker"], g25, g26, g27)
-                original_index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
+                original_index = st.session_state.companies.index(
+                    next(c for c in st.session_state.companies if c["ticker"] == company["ticker"])
+                )
                 st.session_state.companies[original_index] = updated
                 st.success("Bolaget uppdaterat.")
+                st.rerun()
             except Exception as e:
                 st.error(f"Fel vid uppdatering: {e}")
     with col5:
         if st.button("🗑️ Ta bort bolaget"):
-            original_index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
+            original_index = st.session_state.companies.index(
+                next(c for c in st.session_state.companies if c["ticker"] == company["ticker"])
+            )
             st.session_state.companies.pop(original_index)
             st.session_state.current_index = max(0, st.session_state.current_index - 1)
-            st.session_state.deleted = True
+            st.rerun()
 
-    # Visning
     st.markdown(f"""
     **Aktuell kurs:** {company['current_price']:.2f} {company['currency']}  
     **Målkurs 2027:** {company['target_price']:.2f} {company['currency']}  
@@ -160,15 +155,15 @@ if st.session_state.companies:
     **P/S TTM-snitt:** {company['ps_avg']:.2f}
     """)
 
-    # Navigering
+    # Bläddringsknappar
     nav1, nav2, nav3 = st.columns([1, 1, 1])
     with nav1:
         if st.button("⬅️ Föregående") and st.session_state.current_index > 0:
             st.session_state.current_index -= 1
-            st.session_state.navigated = True
+            st.rerun()
     with nav3:
         if st.button("➡️ Nästa") and st.session_state.current_index < total - 1:
             st.session_state.current_index += 1
-            st.session_state.navigated = True
+            st.rerun()
 else:
     st.info("Inga bolag tillagda ännu.")
