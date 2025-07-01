@@ -1,8 +1,8 @@
 import sqlite3
+import os
 import pandas as pd
-from pathlib import Path
 
-DB_PATH = str(Path(__file__).parent / "database.db")  # Lokal filväg (stabil)
+DB_PATH = "/mnt/data/database.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -12,15 +12,13 @@ def init_db():
             ticker TEXT PRIMARY KEY,
             name TEXT,
             currency TEXT,
-            market_cap REAL,
             revenue_ttm REAL,
-            shares_outstanding REAL,
-            ps_avg REAL,
+            growth_2025 REAL,
+            growth_2026 REAL,
+            growth_2027 REAL,
             revenue_2027 REAL,
-            target_price_low REAL,
-            target_price_base REAL,
-            target_price_high REAL,
-            last_updated TEXT
+            ps_avg REAL,
+            target_price_base REAL
         )
     """)
     conn.commit()
@@ -30,8 +28,12 @@ def save_company(data):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
-        INSERT OR REPLACE INTO companies VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-    """, tuple(data.values()))
+        INSERT OR REPLACE INTO companies VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        data["ticker"], data["name"], data["currency"], data["revenue_ttm"],
+        data["growth_2025"], data["growth_2026"], data["growth_2027"],
+        data["revenue_2027"], data["ps_avg"], data["target_price_base"]
+    ))
     conn.commit()
     conn.close()
 
