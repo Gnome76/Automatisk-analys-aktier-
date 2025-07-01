@@ -19,13 +19,13 @@ with st.sidebar:
             try:
                 data = fetch_data(ticker_input)
                 save_company(data)
-                st.success(f"{data['name']} ({data['ticker']}) tillagd!")
+                st.success(f"{data['name']} ({data['ticker']}) tillagd! Ladda om sidan.")
             except Exception as e:
                 st.error(f"Kunde inte hämta data: {e}")
         else:
             st.warning("Ange en giltig ticker-symbol.")
 
-# Uppdatera alla bolag
+# Knapp: Uppdatera alla bolag
 st.markdown("### 🔄 Uppdatera samtliga bolag i databasen")
 if st.button("Uppdatera alla"):
     companies = load_companies()
@@ -33,24 +33,27 @@ if st.button("Uppdatera alla"):
         try:
             updated = fetch_data(row["ticker"])
             save_company(updated)
-        except:
-            st.warning(f"Kunde inte uppdatera {row['ticker']}")
-    st.success("Alla bolag uppdaterade! Ladda om sidan manuellt om du inte ser förändringar.")
+        except Exception as e:
+            st.warning(f"Kunde inte uppdatera {row['ticker']}: {e}")
+    st.success("Alla bolag uppdaterade! Ladda om sidan för att se uppdatering.")
 
-# Läs in bolag
+# Läs in bolag från databas
 df = load_companies()
 
 if df.empty:
     st.info("Inga bolag tillagda ännu.")
 else:
-    # Aktuell aktiekurs med säker hantering
+    st.subheader("📈 Sammanställning")
+
     tickers = list(df["ticker"])
     raw = yf.download(tickers=tickers, period="1d", progress=False)
 
+    # Robust prisextraktion
     if isinstance(raw.columns, pd.MultiIndex):
         prices = raw["Adj Close"].iloc[-1].to_dict()
     else:
-        prices = {tickers[0]: raw["Adj Close"].iloc[-1]}
+        last_price = raw["Adj Close"].iloc[-1] if "Adj Close" in raw.columns else None
+        prices = {tickers[0]: last_price}
 
     df["current_price"] = df["ticker"].map(prices)
     df["undervaluation_%"] = ((df["target_price_base"] - df["current_price"]) / df["current_price"]) * 100
@@ -86,4 +89,4 @@ else:
     selected = st.selectbox("Välj ticker att ta bort", df["ticker"])
     if st.button("Ta bort"):
         delete_company(selected)
-        st.success(f"{selected} borttagen")
+        st.success(f"{selected} borttagen! Ladda om sidan för att uppdatera.")
