@@ -1,8 +1,9 @@
 import sqlite3
 import pandas as pd
+from pathlib import Path
 
-# ✅ Korrekt sökväg för persistent lagring i Streamlit Cloud
-DB_PATH = "/mnt/data/database.db"
+# Dynamisk sökväg: fungerar både lokalt och i Streamlit Cloud
+DB_PATH = str(Path(__file__).parent / "database.db")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
