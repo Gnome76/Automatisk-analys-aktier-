@@ -1,1 +1,3 @@
-
+__pycache__/
+*.pyc
+/mnt/data/database.db
