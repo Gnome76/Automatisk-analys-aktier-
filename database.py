@@ -1,7 +1,9 @@
 import sqlite3
 import pandas as pd
+from pathlib import Path
 
-DB_PATH = "/mnt/data/database.db"  # OBS: korrekt för Streamlit Cloud
+# Spara databasen i samma mapp som koden körs från
+DB_PATH = str(Path(__file__).parent / "database.db")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
