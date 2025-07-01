@@ -1,16 +1,29 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+import gspread
+from gspread_dataframe import set_with_dataframe, get_as_dataframe
 import time
 from datetime import timedelta
 
-st.set_page_config(page_title="Målkurs 2027", layout="wide")
-st.title("📊 Målkurs 2027 – Bläddra mellan bolag")
+# Google Sheet URL och öppna arket
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo/edit"
+SHEET_NAME = "Ark1"  # eller det blad du har
 
-if "companies" not in st.session_state:
-    st.session_state.companies = []
-if "current_index" not in st.session_state:
-    st.session_state.current_index = 0
+gc = gspread.service_account(filename="credentials.json")  # kräver att vi kör lokalt med nyckel – tas bort i cloud
+sh = gc.open_by_url(SHEET_URL)
+worksheet = sh.worksheet(SHEET_NAME)
+
+def load_sheet_data():
+    try:
+        df = get_as_dataframe(worksheet).dropna(subset=["ticker"])
+        return df
+    except:
+        return pd.DataFrame(columns=["ticker", "growth_2025", "growth_2026", "growth_2027"])
+
+def save_sheet_data(df):
+    worksheet.clear()
+    set_with_dataframe(worksheet, df)
 
 def fetch_data(ticker, g25, g26, g27):
     stock = yf.Ticker(ticker)
@@ -46,7 +59,7 @@ def fetch_data(ticker, g25, g26, g27):
                 ps_values.append(ps)
         except:
             pass
-        time.sleep(0.3)
+        time.sleep(0.2)
 
     ps_avg = sum(ps_values) / len(ps_values) if ps_values else 5
     target_price = (revenue_2027 / shares) * ps_avg
@@ -78,92 +91,42 @@ def fetch_data(ticker, g25, g26, g27):
         "undervaluation": undervaluation
     }
 
-# ➕ Lägg till nytt bolag
+# ------------------------ APP UI ------------------------
+
+st.title("📊 Aktieanalys med Google Sheets")
+
+df = load_sheet_data()
+
+# Lägg till nytt bolag
 with st.sidebar:
-    st.header("Lägg till nytt bolag")
-    ticker = st.text_input("Ticker (ex: NVDA)").upper()
+    st.header("Lägg till bolag")
+    ticker = st.text_input("Ticker").upper()
     g25 = st.number_input("Tillväxt 2025 (%)", 0.0, 500.0, 30.0)
     g26 = st.number_input("Tillväxt 2026 (%)", 0.0, 500.0, 30.0)
     g27 = st.number_input("Tillväxt 2027 (%)", 0.0, 500.0, 30.0)
+    if st.button("Lägg till"):
+        df = df.append({"ticker": ticker, "growth_2025": g25, "growth_2026": g26, "growth_2027": g27}, ignore_index=True)
+        save_sheet_data(df)
+        st.success("Bolag tillagt!")
 
-    if st.button("Analysera"):
-        if ticker:
-            try:
-                data = fetch_data(ticker, g25, g26, g27)
-                st.session_state.companies.append(data)
-                st.session_state.current_index = len(st.session_state.companies) - 1
-                st.success(f"{data['name']} tillagd.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Kunde inte hämta data: {e}")
-        else:
-            st.warning("Ange en ticker.")
+# Uppdatera data
+if st.button("🔄 Uppdatera alla bolag"):
+    updated_rows = []
+    for _, row in df.iterrows():
+        try:
+            data = fetch_data(row["ticker"], row["growth_2025"], row["growth_2026"], row["growth_2027"])
+            updated_rows.append(data)
+        except:
+            st.warning(f"Kunde inte hämta data för {row['ticker']}")
+    if updated_rows:
+        df_updated = pd.DataFrame(updated_rows)
+        save_sheet_data(df_updated)
+        st.success("Alla bolag uppdaterade.")
+        df = df_updated
 
-# 🔁 Sortering och visning
-if st.session_state.companies:
-    sorted_companies = sorted(
-        st.session_state.companies,
-        key=lambda x: x["undervaluation"] if x["undervaluation"] is not None else -float("inf"),
-        reverse=True
-    )
-
-    # Begränsa index
-    if st.session_state.current_index >= len(sorted_companies):
-        st.session_state.current_index = len(sorted_companies) - 1
-
-    company = sorted_companies[st.session_state.current_index]
-    total = len(sorted_companies)
-    current = st.session_state.current_index + 1
-
-    st.markdown(f"### {company['ticker']} – {company['name']} ({company['currency']})")
-    st.markdown(f"**Bolag {current} av {total}**")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        g25 = st.number_input("Tillväxt 2025 (%)", value=company["growth_2025"], key="g25")
-    with col2:
-        g26 = st.number_input("Tillväxt 2026 (%)", value=company["growth_2026"], key="g26")
-    with col3:
-        g27 = st.number_input("Tillväxt 2027 (%)", value=company["growth_2027"], key="g27")
-
-    col4, col5 = st.columns(2)
-    with col4:
-        if st.button("🔄 Uppdatera bolaget"):
-            try:
-                updated = fetch_data(company["ticker"], g25, g26, g27)
-                original_index = st.session_state.companies.index(
-                    next(c for c in st.session_state.companies if c["ticker"] == company["ticker"])
-                )
-                st.session_state.companies[original_index] = updated
-                st.success("Bolaget uppdaterat.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Fel vid uppdatering: {e}")
-    with col5:
-        if st.button("🗑️ Ta bort bolaget"):
-            original_index = st.session_state.companies.index(
-                next(c for c in st.session_state.companies if c["ticker"] == company["ticker"])
-            )
-            st.session_state.companies.pop(original_index)
-            st.session_state.current_index = max(0, st.session_state.current_index - 1)
-            st.rerun()
-
-    st.markdown(f"""
-    **Aktuell kurs:** {company['current_price']:.2f} {company['currency']}  
-    **Målkurs 2027:** {company['target_price']:.2f} {company['currency']}  
-    **Undervärdering:** {company['undervaluation']:.1f}%  
-    **P/S TTM-snitt:** {company['ps_avg']:.2f}
-    """)
-
-    # Bläddringsknappar
-    nav1, nav2, nav3 = st.columns([1, 1, 1])
-    with nav1:
-        if st.button("⬅️ Föregående") and st.session_state.current_index > 0:
-            st.session_state.current_index -= 1
-            st.rerun()
-    with nav3:
-        if st.button("➡️ Nästa") and st.session_state.current_index < total - 1:
-            st.session_state.current_index += 1
-            st.rerun()
+# Visa resultat sorterat
+if not df.empty and "target_price" in df.columns:
+    df_sorted = df.sort_values(by="undervaluation", ascending=False)
+    st.dataframe(df_sorted.style.background_gradient(subset=["undervaluation"], cmap="RdYlGn"))
 else:
-    st.info("Inga bolag tillagda ännu.")
+    st.info("Inga uppgifter att visa ännu.")
