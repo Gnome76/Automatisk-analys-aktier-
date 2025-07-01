@@ -11,6 +11,10 @@ if "companies" not in st.session_state:
     st.session_state.companies = []
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
+if "deleted" not in st.session_state:
+    st.session_state.deleted = False
+if "navigated" not in st.session_state:
+    st.session_state.navigated = False
 
 def fetch_data(ticker, g25, g26, g27):
     stock = yf.Ticker(ticker)
@@ -91,13 +95,14 @@ with st.sidebar:
             try:
                 data = fetch_data(ticker, g25, g26, g27)
                 st.session_state.companies.append(data)
+                st.session_state.current_index = len(st.session_state.companies) - 1
                 st.success(f"{data['name']} tillagd.")
             except Exception as e:
                 st.error(f"Kunde inte hämta data: {e}")
         else:
             st.warning("Ange en ticker.")
 
-# 🔁 Sortera efter undervaluation
+# 🔁 Sortering och indexjustering
 if st.session_state.companies:
     sorted_companies = sorted(
         st.session_state.companies,
@@ -106,9 +111,13 @@ if st.session_state.companies:
     )
     st.session_state.sorted = sorted_companies
 
-    # Justera index om utanför gränser
+    if st.session_state.deleted or st.session_state.navigated:
+        st.session_state.deleted = False
+        st.session_state.navigated = False
+        st.stop()
+
     if st.session_state.current_index >= len(sorted_companies):
-        st.session_state.current_index = len(sorted_companies) - 1
+        st.session_state.current_index = max(0, len(sorted_companies) - 1)
 
     company = sorted_companies[st.session_state.current_index]
     total = len(sorted_companies)
@@ -141,7 +150,7 @@ if st.session_state.companies:
             original_index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
             st.session_state.companies.pop(original_index)
             st.session_state.current_index = max(0, st.session_state.current_index - 1)
-            st.experimental_rerun()
+            st.session_state.deleted = True
 
     # Visning
     st.markdown(f"""
@@ -156,10 +165,10 @@ if st.session_state.companies:
     with nav1:
         if st.button("⬅️ Föregående") and st.session_state.current_index > 0:
             st.session_state.current_index -= 1
-            st.experimental_rerun()
+            st.session_state.navigated = True
     with nav3:
         if st.button("➡️ Nästa") and st.session_state.current_index < total - 1:
             st.session_state.current_index += 1
-            st.experimental_rerun()
+            st.session_state.navigated = True
 else:
     st.info("Inga bolag tillagda ännu.")
