@@ -1,1 +1,4 @@
-
+streamlit
+pandas
+yfinance
+sqlite3  # krävs ej separat – inbyggt i Python
