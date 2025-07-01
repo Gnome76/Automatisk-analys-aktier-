@@ -5,7 +5,7 @@ import time
 from datetime import timedelta
 
 st.set_page_config(page_title="Målkurs 2027", layout="wide")
-st.title("📊 Målkurs 2027 – Analys med rullande P/S TTM")
+st.title("📊 Målkurs 2027 – Individuell uppdatering")
 
 if "companies" not in st.session_state:
     st.session_state.companies = []
@@ -18,19 +18,18 @@ def fetch_data(ticker, g25, g26, g27):
     shares = info.get("sharesOutstanding") or 1
     revenue_ttm = info.get("totalRevenue") or 0
 
-    # 🔢 Tillväxt
+    # Tillväxt
     revenue_2025 = revenue_ttm * (1 + g25 / 100)
     revenue_2026 = revenue_2025 * (1 + g26 / 100)
     revenue_2027 = revenue_2026 * (1 + g27 / 100)
 
-    # 📊 Hämta minst 8 kvartal → 5 TTM-möjligheter
+    # Rullande P/S (TTM)
     try:
         financials = stock.quarterly_financials.T
         revenues = financials["Total Revenue"].dropna().head(8)
     except:
         revenues = pd.Series([revenue_ttm / 4] * 8)
 
-    # 📈 Rullande TTM P/S – snitt
     ps_values = []
     dates = revenues.index
     for i in range(len(revenues) - 3):
@@ -50,11 +49,8 @@ def fetch_data(ticker, g25, g26, g27):
         time.sleep(0.3)
 
     ps_avg = sum(ps_values) / len(ps_values) if ps_values else 5
-
-    # 🎯 Målkurs
     target_price = (revenue_2027 / shares) * ps_avg
 
-    # 💰 Aktuell kurs
     current_price = None
     try:
         hist = stock.history(period="1d")
@@ -84,11 +80,11 @@ def fetch_data(ticker, g25, g26, g27):
 
 # ➕ Sidopanel
 with st.sidebar:
-    st.header("Lägg till bolag")
+    st.header("Lägg till nytt bolag")
     ticker = st.text_input("Ticker (ex: NVDA)").upper()
-    g25 = st.number_input("Förväntad tillväxt 2025 (%)", min_value=0.0, max_value=500.0, value=30.0)
-    g26 = st.number_input("Förväntad tillväxt 2026 (%)", min_value=0.0, max_value=500.0, value=30.0)
-    g27 = st.number_input("Förväntad tillväxt 2027 (%)", min_value=0.0, max_value=500.0, value=30.0)
+    g25 = st.number_input("Tillväxt 2025 (%)", 0.0, 500.0, 30.0)
+    g26 = st.number_input("Tillväxt 2026 (%)", 0.0, 500.0, 30.0)
+    g27 = st.number_input("Tillväxt 2027 (%)", 0.0, 500.0, 30.0)
 
     if st.button("Analysera"):
         if ticker:
@@ -99,19 +95,41 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Kunde inte hämta data: {e}")
         else:
-            st.warning("Ange en giltig ticker.")
+            st.warning("Ange en ticker.")
 
-# 📊 Visa resultat
+# 📊 Visa analys
 if st.session_state.companies:
-    df = pd.DataFrame(st.session_state.companies)
-    df["undervaluation"] = df["undervaluation"].map(lambda x: f"{x:.1f} %" if x is not None else "-")
-    df["target_price"] = df["target_price"].map(lambda x: f"{x:.2f}" if x is not None else "-")
-    df["current_price"] = df["current_price"].map(lambda x: f"{x:.2f}" if x is not None else "-")
+    st.subheader("📋 Analyserade bolag")
 
-    st.subheader("🔍 Analysresultat")
-    st.dataframe(df[[
-        "ticker", "name", "currency", "revenue_ttm", "growth_2025", "growth_2026", "growth_2027",
-        "revenue_2027", "ps_avg", "target_price", "current_price", "undervaluation"
-    ]], use_container_width=True)
+    for i, company in enumerate(st.session_state.companies):
+        st.markdown(f"### {company['ticker']} – {company['name']} ({company['currency']})")
+
+        col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 1])
+        with col1:
+            g25 = st.number_input(f"Tillväxt 2025 (%) – {company['ticker']}", value=company["growth_2025"], key=f"g25_{i}")
+        with col2:
+            g26 = st.number_input(f"Tillväxt 2026 (%) – {company['ticker']}", value=company["growth_2026"], key=f"g26_{i}")
+        with col3:
+            g27 = st.number_input(f"Tillväxt 2027 (%) – {company['ticker']}", value=company["growth_2027"], key=f"g27_{i}")
+        with col4:
+            if st.button(f"🔄 Uppdatera – {company['ticker']}", key=f"update_{i}"):
+                try:
+                    updated = fetch_data(company["ticker"], g25, g26, g27)
+                    st.session_state.companies[i] = updated
+                    st.success(f"{company['ticker']} uppdaterad.")
+                except Exception as e:
+                    st.error(f"Fel vid uppdatering: {e}")
+        with col5:
+            if st.button(f"🗑️ Ta bort – {company['ticker']}", key=f"delete_{i}"):
+                st.session_state.companies.pop(i)
+                st.experimental_rerun()
+
+        st.markdown(f"""
+        **Aktuell kurs:** {company['current_price']:.2f} {company['currency']}  
+        **Målkurs 2027:** {company['target_price']:.2f} {company['currency']}  
+        **Undervärdering:** {company['undervaluation']:.1f}%  
+        **P/S TTM-snitt:** {company['ps_avg']:.2f}
+        """)
+        st.markdown("---")
 else:
-    st.info("Inga analyserade bolag ännu.")
+    st.info("Inga bolag tillagda än.")
