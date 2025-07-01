@@ -4,7 +4,7 @@ from database import init_db, save_company, load_companies, delete_company
 from finance import fetch_data
 import yfinance as yf
 
-# Initiera databasen
+# Initiera databas
 init_db()
 
 st.set_page_config(page_title="Målkurs 2027 – Aktieanalys", layout="wide")
@@ -37,7 +37,7 @@ if st.button("Uppdatera alla"):
             st.warning(f"Kunde inte uppdatera {row['ticker']}: {e}")
     st.success("Alla bolag uppdaterade! Ladda om sidan.")
 
-# 📈 Visa alla bolag
+# 📈 Visa bolag
 df = load_companies()
 
 if df.empty:
@@ -48,25 +48,20 @@ else:
     tickers = list(df["ticker"])
     prices = {}
 
-    try:
-        if len(tickers) == 1:
-            raw = yf.download(tickers=tickers[0], period="1d", progress=False)
-            if "Adj Close" in raw.columns:
-                prices[tickers[0]] = raw["Adj Close"].iloc[-1]
-        else:
-            raw = yf.download(tickers=tickers, period="1d", group_by="ticker", progress=False)
-            for ticker in tickers:
-                try:
-                    prices[ticker] = raw[ticker]["Adj Close"].iloc[-1]
-                except:
-                    continue
-    except Exception as e:
-        st.error(f"Fel vid prisinhämtning: {e}")
+    # ✅ Stabil prisinhämtning via .history()
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="1d")
+            if not hist.empty:
+                prices[ticker] = hist["Close"].iloc[-1]
+        except Exception as e:
+            st.warning(f"Kunde inte hämta pris för {ticker}: {e}")
 
     df["current_price"] = df["ticker"].map(prices)
 
     if df["current_price"].isna().any():
-        st.warning("⚠️ Vissa priser kunde inte hämtas. Kontrollera ticker-symbolerna.")
+        st.warning("⚠️ Vissa aktuella kurser kunde inte hämtas. Kontrollera ticker-symbolerna.")
 
     df["undervaluation_%"] = ((df["target_price_base"] - df["current_price"]) / df["current_price"]) * 100
     df.sort_values(by="undervaluation_%", ascending=False, inplace=True)
