@@ -5,7 +5,7 @@ import time
 from datetime import timedelta
 
 st.set_page_config(page_title="Målkurs 2027", layout="wide")
-st.title("📊 Målkurs 2027 – Sorterad analys")
+st.title("📊 Målkurs 2027 – Ett bolag i taget")
 
 if "companies" not in st.session_state:
     st.session_state.companies = []
@@ -76,7 +76,7 @@ def fetch_data(ticker, g25, g26, g27):
         "undervaluation": undervaluation
     }
 
-# ➕ Lägg till nytt bolag
+# ➕ Lägg till bolag
 with st.sidebar:
     st.header("Lägg till nytt bolag")
     ticker = st.text_input("Ticker (ex: NVDA)").upper()
@@ -95,39 +95,42 @@ with st.sidebar:
         else:
             st.warning("Ange en ticker.")
 
-# 📊 Visa bolag (sorterade)
+# 📊 Visa ett bolag i taget
 if st.session_state.companies:
-    # Sortera efter mest undervärderad först
     sorted_companies = sorted(
         st.session_state.companies,
         key=lambda x: x["undervaluation"] if x["undervaluation"] is not None else -float("inf"),
         reverse=True
     )
 
-    st.subheader("📋 Analyserade bolag (sorterade efter undervärdering)")
+    tickers = [c["ticker"] for c in sorted_companies]
+    selected_ticker = st.selectbox("Välj bolag att visa (mest undervärderad först):", tickers)
+    company = next((c for c in sorted_companies if c["ticker"] == selected_ticker), None)
 
-    for i, company in enumerate(sorted_companies):
+    if company:
         st.markdown(f"### {company['ticker']} – {company['name']} ({company['currency']})")
 
-        col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 1])
+        col1, col2, col3 = st.columns(3)
         with col1:
-            g25 = st.number_input(f"Tillväxt 2025 (%) – {company['ticker']}", value=company["growth_2025"], key=f"g25_{i}")
+            g25 = st.number_input("Tillväxt 2025 (%)", value=company["growth_2025"], key="g25")
         with col2:
-            g26 = st.number_input(f"Tillväxt 2026 (%) – {company['ticker']}", value=company["growth_2026"], key=f"g26_{i}")
+            g26 = st.number_input("Tillväxt 2026 (%)", value=company["growth_2026"], key="g26")
         with col3:
-            g27 = st.number_input(f"Tillväxt 2027 (%) – {company['ticker']}", value=company["growth_2027"], key=f"g27_{i}")
+            g27 = st.number_input("Tillväxt 2027 (%)", value=company["growth_2027"], key="g27")
+
+        col4, col5 = st.columns(2)
         with col4:
-            if st.button(f"🔄 Uppdatera – {company['ticker']}", key=f"update_{i}"):
+            if st.button("🔄 Uppdatera bolaget"):
                 try:
                     updated = fetch_data(company["ticker"], g25, g26, g27)
-                    index = st.session_state.companies.index(company)
+                    index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
                     st.session_state.companies[index] = updated
-                    st.success(f"{company['ticker']} uppdaterad.")
+                    st.success("Bolaget uppdaterat.")
                 except Exception as e:
                     st.error(f"Fel vid uppdatering: {e}")
         with col5:
-            if st.button(f"🗑️ Ta bort – {company['ticker']}", key=f"delete_{i}"):
-                index = st.session_state.companies.index(company)
+            if st.button("🗑️ Ta bort bolaget"):
+                index = st.session_state.companies.index(next(c for c in st.session_state.companies if c["ticker"] == company["ticker"]))
                 st.session_state.companies.pop(index)
                 st.experimental_rerun()
 
@@ -137,6 +140,5 @@ if st.session_state.companies:
         **Undervärdering:** {company['undervaluation']:.1f}%  
         **P/S TTM-snitt:** {company['ps_avg']:.2f}
         """)
-        st.markdown("---")
 else:
-    st.info("Inga bolag tillagda än.")
+    st.info("Inga bolag tillagda ännu.")
