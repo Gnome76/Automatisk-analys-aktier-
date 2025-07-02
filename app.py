@@ -1,108 +1,88 @@
 import streamlit as st
+import yfinance as yf
+import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 import os
 
-# Tillfällig filuppladdning (visas bara om credentials.json saknas i /mnt/data/)
-if "credentials.json" not in os.listdir("/mnt/data/"):
+# 🔒 Skapa mappen /mnt/data/ om den inte finns
+data_folder = "/mnt/data/"
+if not os.path.exists(data_folder):
+    os.makedirs(data_folder)
+
+# 🔍 Visa vad som finns i /mnt/data/
+st.write("📁 Innehåll i /mnt/data/:", os.listdir(data_folder))
+
+# 📥 Ladda upp credentials.json om den inte finns
+if "credentials.json" not in os.listdir(data_folder):
     uploaded_file = st.file_uploader("⬆️ Ladda upp credentials.json", type="json")
     if uploaded_file:
-        with open("/mnt/data/credentials.json", "wb") as f:
+        with open(os.path.join(data_folder, "credentials.json"), "wb") as f:
             f.write(uploaded_file.read())
         st.success("✅ Filen är nu uppladdad! Starta om appen.")
         st.stop()
-        import streamlit as st
-import os
-import pandas as pd
-import yfinance as yf
-import gspread
-from google.oauth2.service_account import Credentials
+    else:
+        st.warning("⚠️ Ladda upp credentials.json för att kunna fortsätta.")
+        st.stop()
 
-# 🔍 Temporär kontrollrad – visar filer i mnt/data/
-st.write("📁 Innehåll i /mnt/data/:", os.listdir("/mnt/data/"))
-
-# 🛡️ Autentisering för Google Sheets
+# 🔑 Anslut till Google Sheets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials = Credentials.from_service_account_file(
-    "/mnt/data/credentials.json",  # Säkerställ att filnamnet stämmer
+    os.path.join(data_folder, "credentials.json"),
     scopes=scope
 )
 gc = gspread.authorize(credentials)
 
-# 🔑 Ange ditt Google Sheet-ID här
+# 📄 Ange ditt Google Sheet-ID här
 SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
-SHEET_NAME = "Sheet1"  # Ändra om du döpt om fliken i arket
+worksheet = gc.open_by_key(SHEET_ID).sheet1
 
-# 🔄 Försök läsa datan från arket
-try:
-    sh = gc.open_by_key(SHEET_ID)
-    worksheet = sh.worksheet(SHEET_NAME)
-    data = worksheet.get_all_records()
-    df = pd.DataFrame(data)
-except Exception as e:
-    st.error(f"Kunde inte läsa från Google Sheet: {e}")
-    df = pd.DataFrame(columns=[
-        "Ticker", "Tillväxt 2025 (%)", "Tillväxt 2026 (%)", "Tillväxt 2027 (%)",
-        "Omsättning TTM", "P/S TTM", "Aktuell kurs", "Beräknad omsättning 2027",
-        "Målkurs 2027", "Undervärdering (%)"
-    ])
+# 🔄 Läs existerande data
+data = worksheet.get_all_records()
+df = pd.DataFrame(data)
 
-# 📥 Formulär för nytt bolag
-with st.form("Lägg till bolag"):
-    ticker = st.text_input("Ticker (t.ex. AAPL)").upper()
-    growth_2027 = st.number_input("Förväntad tillväxt 2027 (%)", value=10.0)
-    submitted = st.form_submit_button("Analysera")
+# 📈 Appens gränssnitt
+st.title("📊 Automatisk analys av aktier – Målkurs 2027")
+st.markdown("Den här appen beräknar en möjlig målkurs baserat på P/S TTM och förväntad tillväxt.")
 
-    if submitted and ticker:
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            current_price = info.get("currentPrice")
+# ➕ Lägg till nytt bolag
+st.header("Lägg till nytt bolag")
+ticker = st.text_input("Ticker (ex. AAPL)")
+growth_2027 = st.number_input("Förväntad tillväxt 2027 (%)", step=1.0)
 
-            # Hämta TTM-omsättning
-            ttm_rev = info.get("totalRevenue")
+if st.button("Analysera och lägg till"):
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
 
-            # Hämta kvartalsdata för att beräkna TTM P/S
-            q = stock.quarterly_financials
-            if q.empty or ttm_rev is None or current_price is None:
-                st.warning("Kunde inte hämta komplett data.")
-            else:
-                market_cap = info.get("marketCap")
-                ps_ttm = market_cap / ttm_rev if market_cap and ttm_rev else None
+        name = info.get("shortName", "")
+        price = info.get("currentPrice", None)
+        currency = info.get("currency", "USD")
+        shares = info.get("sharesOutstanding", None)
+        revenue_ttm = info.get("totalRevenue", None)
+        ps_ratio = info.get("priceToSalesTrailing12Months", None)
 
-                # Förväntad tillväxt 2025 och 2026 (om möjligt)
-                growth_2025 = info.get("earningsGrowth") or 0.1
-                growth_2026 = growth_2025  # om du vill använda samma
+        if None in [price, shares, revenue_ttm, ps_ratio]:
+            st.error("❌ Kunde inte hämta fullständig data för bolaget.")
+        else:
+            growth_factor = 1 + (growth_2027 / 100)
+            est_revenue_2027 = revenue_ttm * growth_factor
+            target_price_2027 = (est_revenue_2027 / shares) * ps_ratio
+            undervaluation = ((target_price_2027 - price) / price) * 100
 
-                # Räkna ut framtida omsättning
-                oms_2027 = ttm_rev * (1 + growth_2025) * (1 + growth_2026) * (1 + growth_2027 / 100)
-                target_price = oms_2027 * ps_ttm / info.get("sharesOutstanding", 1)
-                undervaluation = ((target_price - current_price) / current_price * 100) if current_price else None
+            # Spara till Google Sheet
+            new_row = [ticker, name, price, ps_ratio, revenue_ttm, shares, growth_2027,
+                       est_revenue_2027, target_price_2027, undervaluation, currency]
+            worksheet.append_row(new_row)
 
-                ny_rad = {
-                    "Ticker": ticker,
-                    "Tillväxt 2025 (%)": round(growth_2025 * 100, 2),
-                    "Tillväxt 2026 (%)": round(growth_2026 * 100, 2),
-                    "Tillväxt 2027 (%)": round(growth_2027, 2),
-                    "Omsättning TTM": round(ttm_rev / 1e9, 2),
-                    "P/S TTM": round(ps_ttm, 2),
-                    "Aktuell kurs": round(current_price, 2),
-                    "Beräknad omsättning 2027": round(oms_2027 / 1e9, 2),
-                    "Målkurs 2027": round(target_price, 2),
-                    "Undervärdering (%)": round(undervaluation, 2),
-                }
+            st.success(f"✅ {ticker} analyserat och sparat!")
+    except Exception as e:
+        st.error(f"Något gick fel: {e}")
 
-                # Lägg till i DataFrame och spara
-                df = pd.concat([df, pd.DataFrame([ny_rad])], ignore_index=True)
-                worksheet.update([df.columns.values.tolist()] + df.values.tolist())
-                st.success(f"{ticker} har lagts till i analysen.")
-        except Exception as e:
-            st.error(f"Kunde inte hämta data: {e}")
-
-# 📊 Visa analysdata
+# 📄 Visa data
+st.header("📃 Analyserade bolag")
 if not df.empty:
-    df_sorted = df.sort_values(by="Undervärdering (%)", ascending=False).reset_index(drop=True)
-
-    st.subheader("📈 Aktieanalys – Mest undervärderad först")
-    index = st.number_input("Bläddra mellan bolag", min_value=0, max_value=len(df_sorted) - 1, step=1)
-    st.write(df_sorted.iloc[index])
+    df_sorted = df.sort_values(by="Undervaluation (%)", ascending=False)
+    st.dataframe(df_sorted)
 else:
-    st.info("Inga bolag har lagts till ännu.")
+    st.info("Inga bolag analyserade ännu.")
