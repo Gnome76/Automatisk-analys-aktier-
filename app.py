@@ -5,10 +5,6 @@ import json
 import yfinance as yf
 import pandas as pd
 
-# Kontroll: visa filer i /mnt/data/
-import os
-st.write("📁 Innehåll i /mnt/data/:", os.listdir("/mnt/data/"))
-
 # Google Sheets-inställningar
 scope = ["https://www.googleapis.com/auth/spreadsheets"]
 credentials_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
@@ -16,7 +12,7 @@ credentials = Credentials.from_service_account_info(credentials_dict, scopes=sco
 gc = gspread.authorize(credentials)
 
 # Sheet-ID (justera vid behov)
-SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"  # din sheet
+SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
 sh = gc.open_by_key(SHEET_ID)
 worksheet = sh.sheet1
 
