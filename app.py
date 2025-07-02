@@ -1,135 +1,135 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
 import gspread
 from google.oauth2.service_account import Credentials
 import os
 
-# Tillfällig felsökning – visar filer i /mnt/data/
-st.write("Filer i /mnt/data/:", os.listdir("/mnt/data/"))
+# Google Sheet-ID
+SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
+SHEET_NAME = "Sheet1"
 
-# Autentisering för Google Sheets
+# Autentisering till Google Sheets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials = Credentials.from_service_account_file(
     "/mnt/data/credentials.json",
     scopes=scope
 )
 gc = gspread.authorize(credentials)
+sh = gc.open_by_key(SHEET_ID)
+worksheet = sh.worksheet(SHEET_NAME)
 
-# Google Sheet ID
-SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
-SHEET_NAME = "Ark1"
-
-# Hämta eller skapa Google Sheet
+# Läs in datan
 try:
-    sh = gc.open_by_key(SHEET_ID)
-    worksheet = sh.worksheet(SHEET_NAME)
-    data = worksheet.get_all_records()
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(worksheet.get_all_records())
 except Exception as e:
     st.error(f"Kunde inte läsa Google Sheet: {e}")
     df = pd.DataFrame(columns=[
-        "Ticker", "Namn", "Valuta", "TTM Omsättning", "Börsvärde",
-        "Antal aktier", "Genomsnitt P/S", "Nuvarande kurs",
-        "Tillväxt 2025 (%)", "Tillväxt 2026 (%)", "Tillväxt 2027 (%)",
-        "Omsättning 2027", "Målkurs 2027", "Undervärdering (%)"
+        "Ticker", "Bolagsnamn", "Tillväxt_2025", "Tillväxt_2026", "Tillväxt_2027",
+        "Aktuell kurs", "Genomsnittligt P/S", "Omsättning 2024", "Omsättning 2025",
+        "Omsättning 2026", "Omsättning 2027", "Målkurs 2027", "Undervärdering (%)"
     ])
 
-# Ny analys
-st.header("Lägg till bolag för analys")
-ticker = st.text_input("Ticker (t.ex. AAPL)")
-growth_2027 = st.number_input("Förväntad tillväxt 2027 (%)", value=10.0)
+st.title("📈 Automatisk aktieanalys – P/S 2027")
 
-if st.button("Analysera bolag"):
-    if not ticker:
-        st.warning("Fyll i en ticker")
-    else:
+# Formulär för att lägga till nytt bolag
+with st.form("add_company"):
+    st.subheader("➕ Lägg till nytt bolag")
+    ticker = st.text_input("Ticker (t.ex. AAPL)")
+    tillvaxt_2027 = st.number_input("Förväntad tillväxt 2027 (%)", value=10.0)
+    submitted = st.form_submit_button("Lägg till")
+    
+    if submitted and ticker:
         try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            hist = stock.history(period="1y", interval="3mo")
+            info = yf.Ticker(ticker).info
+            name = info.get("shortName", ticker)
 
-            # Validera historik
-            if hist.empty or len(hist) < 4:
-                raise ValueError("Otillräcklig kvartalsdata")
+            # Hämta tillväxtprognos från Yahoo (2025 och 2026)
+            growth = info.get("earningsQuarterlyGrowth", 0.10)  # fallback
+            tillvaxt_2025 = growth * 100
+            tillvaxt_2026 = growth * 100
 
-            # Rullande TTM-omsättning för varje kvartal
-            quarterly = stock.quarterly_financials.T
-            quarterly_rev = quarterly["Total Revenue"]
-            quarterly_rev = quarterly_rev.sort_index(ascending=False)
-            rolling_revenue = quarterly_rev.rolling(4).sum().dropna()
+            # Hämta kvartalsdata för att räkna ut genomsnittligt P/S
+            q = yf.Ticker(ticker).quarterly_financials
+            hist = yf.Ticker(ticker).history(period="1y")
+            if q.empty or hist.empty:
+                raise ValueError("Kunde inte hämta kvartalsdata")
 
-            # P/S per kvartal = Börsvärde / TTM Revenue
-            market_cap = info.get("marketCap")
-            ps_values = market_cap / rolling_revenue
-            avg_ps = ps_values.mean()
+            # Skapa lista på TTM-omsättningar för 4 kvartal
+            rev = yf.Ticker(ticker).quarterly_financials.loc["Total Revenue"]
+            rev = rev.sort_index(ascending=True)
+            ps_values = []
+            for i in range(len(rev) - 3):
+                ttm_sales = rev[i] + rev[i + 1] + rev[i + 2] + rev[i + 3]
+                date = rev.index[i + 3]
+                price = hist.loc[date:date].iloc[0]["Close"] if date in hist.index else None
+                shares = info.get("sharesOutstanding", 1)
+                market_cap = price * shares if price else None
+                ps = market_cap / ttm_sales if market_cap and ttm_sales else None
+                if ps:
+                    ps_values.append(ps)
 
-            currency = info.get("currency", "USD")
-            name = info.get("shortName", "")
-            shares = info.get("sharesOutstanding", 0)
-            current_price = info.get("currentPrice", 0)
-            ttm_revenue = quarterly_rev.head(4).sum()
+            average_ps = round(sum(ps_values) / len(ps_values), 2) if ps_values else None
 
-            # Tillväxtprognoser i %
-            growth_2025 = info.get("earningsQuarterlyGrowth", 0.10) * 100
-            growth_2026 = info.get("revenueGrowth", 0.10) * 100
+            # Hämta aktuell kurs och nuvarande omsättning
+            current_price = yf.Ticker(ticker).history(period="1d")["Close"].iloc[-1]
+            sales_2024 = rev[-4:].sum()
 
-            # Omvandla tillväxt till decimal
-            g25 = growth_2025 / 100
-            g26 = growth_2026 / 100
-            g27 = growth_2027 / 100
+            # Räkna ut framtida omsättning
+            sales_2025 = sales_2024 * (1 + tillvaxt_2025 / 100)
+            sales_2026 = sales_2025 * (1 + tillvaxt_2026 / 100)
+            sales_2027 = sales_2026 * (1 + tillvaxt_2027 / 100)
 
-            oms_2027 = ttm_revenue * (1 + g25) * (1 + g26) * (1 + g27)
-            target_price = (oms_2027 / shares) * avg_ps
-            undervaluation = ((target_price - current_price) / current_price) * 100
+            shares_outstanding = info.get("sharesOutstanding", 1)
+            target_price = (sales_2027 / shares_outstanding) * average_ps
+            undervaluation = round((target_price - current_price) / current_price * 100, 2)
 
-            df = pd.concat([df, pd.DataFrame([{
+            new_row = {
                 "Ticker": ticker,
-                "Namn": name,
-                "Valuta": currency,
-                "TTM Omsättning": ttm_revenue,
-                "Börsvärde": market_cap,
-                "Antal aktier": shares,
-                "Genomsnitt P/S": round(avg_ps, 2),
-                "Nuvarande kurs": current_price,
-                "Tillväxt 2025 (%)": round(growth_2025, 1),
-                "Tillväxt 2026 (%)": round(growth_2026, 1),
-                "Tillväxt 2027 (%)": round(growth_2027, 1),
-                "Omsättning 2027": round(oms_2027, 2),
+                "Bolagsnamn": name,
+                "Tillväxt_2025": round(tillvaxt_2025, 2),
+                "Tillväxt_2026": round(tillvaxt_2026, 2),
+                "Tillväxt_2027": tillvaxt_2027,
+                "Aktuell kurs": round(current_price, 2),
+                "Genomsnittligt P/S": average_ps,
+                "Omsättning 2024": round(sales_2024),
+                "Omsättning 2025": round(sales_2025),
+                "Omsättning 2026": round(sales_2026),
+                "Omsättning 2027": round(sales_2027),
                 "Målkurs 2027": round(target_price, 2),
-                "Undervärdering (%)": round(undervaluation, 1)
-            }])], ignore_index=True)
+                "Undervärdering (%)": undervaluation
+            }
 
-            # Spara till Google Sheet
-            try:
-                worksheet.clear()
-                worksheet.update([df.columns.values.tolist()] + df.values.tolist())
-            except Exception as e:
-                st.error(f"Kunde inte spara till Google Sheet: {e}")
-
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+            st.success("Bolaget har lagts till!")
         except Exception as e:
             st.error(f"Kunde inte hämta data: {e}")
 
-# Sortering
+# Bläddringsfunktion – ett bolag i taget, mest undervärderad först
 if not df.empty:
-    df = df.sort_values(by="Undervärdering (%)", ascending=False)
-    st.header("Analysresultat")
-
-    # Bläddring
+    df = df.sort_values(by="Undervärdering (%)", ascending=False).reset_index(drop=True)
     if "index" not in st.session_state:
         st.session_state.index = 0
 
-    bolag = df.iloc[st.session_state.index]
+    current = st.session_state.index
+    bolag = df.iloc[current]
 
-    st.subheader(f"{bolag['Namn']} ({bolag['Ticker']})")
-    st.write(f"Nuvarande kurs: {bolag['Nuvarande kurs']} {bolag['Valuta']}")
-    st.write(f"Målkurs 2027: {bolag['Målkurs 2027']} {bolag['Valuta']}")
-    st.write(f"Undervärdering: {bolag['Undervärdering (%)']} %")
+    st.subheader(f"📊 {bolag['Bolagsnamn']} ({bolag['Ticker']})")
+    st.metric("Aktuell kurs", f"{bolag['Aktuell kurs']}")
+    st.metric("Målkurs 2027", f"{bolag['Målkurs 2027']}")
+    st.metric("Undervärdering (%)", f"{bolag['Undervärdering (%)']} %")
+    st.write("Tillväxt 2025–2027 (%):", bolag["Tillväxt_2025"], bolag["Tillväxt_2026"], bolag["Tillväxt_2027"])
+    st.write("Omsättning (M):", {
+        "2024": bolag["Omsättning 2024"],
+        "2025": bolag["Omsättning 2025"],
+        "2026": bolag["Omsättning 2026"],
+        "2027": bolag["Omsättning 2027"],
+    })
+    st.write("Genomsnittligt P/S:", bolag["Genomsnittligt P/S"])
 
     col1, col2 = st.columns(2)
-    with col1:
-        if st.button("⬅️ Föregående") and st.session_state.index > 0:
-            st.session_state.index -= 1
-    with col2:
-        if st.button("Nästa ➡️") and st.session_state.index < len(df) - 1:
-            st.session_state.index += 1
+    if col1.button("⬅️ Föregående", disabled=current == 0):
+        st.session_state.index -= 1
+    if col2.button("➡️ Nästa", disabled=current >= len(df) - 1):
+        st.session_state.index += 1
