@@ -1,12 +1,2 @@
-# Ignorera känsliga filer
 credentials.json
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.env
-
-# Streamlit och Python
-.mypy_cache/
-.streamlit/
-.venv/
+*.json
