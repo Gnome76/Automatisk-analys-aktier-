@@ -1,78 +1,124 @@
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
 import pandas as pd
+import yfinance as yf
+import gspread
+import json
+from google.oauth2.service_account import Credentials
+import datetime
 
-# Ange ID för ditt Google Sheet (från länken)
-SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
-SHEET_NAME = "Ark1"
+st.set_page_config(page_title="Automatisk Aktieanalys", layout="wide")
 
-# Autentisering – credentials.json ligger i projektroten
+# 📌 Autentisering
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive"
 ]
-credentials_path = "credentials.json"
-credentials = Credentials.from_service_account_file(credentials_path, scopes=scope)
+
+credentials_dict = st.secrets["GOOGLE_CREDENTIALS"]
+credentials = Credentials.from_service_account_info(credentials_dict, scopes=scope)
 gc = gspread.authorize(credentials)
-sh = gc.open_by_key(SHEET_ID)
-worksheet = sh.worksheet(SHEET_NAME)
 
-# Ladda data från Google Sheets
-def load_data():
-    records = worksheet.get_all_records()
-    return pd.DataFrame(records)
+# 🔑 Google Sheets-ID och kalkylblad
+SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
+SHEET_NAME = "Data"
 
-# Spara data till Google Sheets
-def save_data(df):
-    worksheet.clear()
-    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+try:
+    sh = gc.open_by_key(SHEET_ID)
+    worksheet = sh.worksheet(SHEET_NAME)
+    df = pd.DataFrame(worksheet.get_all_records())
+except Exception as e:
+    st.error(f"Kunde inte läsa Google Sheet: {e}")
+    df = pd.DataFrame()
 
-# Streamlit UI
-st.title("📈 Automatisk aktieanalys")
+st.title("📈 Automatisk analys av aktier (med målkurs 2027)")
 
-# Ladda nuvarande data
-df = load_data()
+with st.form("ticker_form"):
+    ticker = st.text_input("Ange ticker (t.ex. AAPL, MSFT, NVDA):").upper()
+    tillväxt_2027 = st.number_input("Förväntad tillväxt 2027 (%)", value=15.0)
+    submitted = st.form_submit_button("Analysera")
 
-# Visa nuvarande bolag
-st.subheader("📊 Nuvarande analyser")
-if df.empty:
-    st.info("Inga bolag har lagts till ännu.")
-else:
-    st.dataframe(df)
+if submitted and ticker:
+    try:
+        stock = yf.Ticker(ticker)
 
-# Formulär för att lägga till nytt bolag
-st.subheader("➕ Lägg till nytt bolag")
-with st.form("add_company_form"):
-    namn = st.text_input("Bolagsnamn")
-    kurs = st.number_input("Nuvarande aktiekurs", min_value=0.0)
-    oms_ttm = st.number_input("Omsättning TTM", min_value=0.0)
-    aktier = st.number_input("Antal aktier", min_value=1.0)
-    tillväxt_2025 = st.number_input("Tillväxt 2025 (%)", value=0.0)
-    tillväxt_2026 = st.number_input("Tillväxt 2026 (%)", value=0.0)
-    tillväxt_2027 = st.number_input("Tillväxt 2027 (%)", value=0.0)
-    ps_tal = st.number_input("Genomsnittligt P/S TTM", min_value=0.0)
-    submit = st.form_submit_button("Lägg till bolag")
+        info = stock.info
+        currency = info.get("currency", "USD")
+        shares_outstanding = info.get("sharesOutstanding")
+        market_cap = info.get("marketCap")
 
-    if submit and namn:
-        oms_2025 = oms_ttm * (1 + tillväxt_2025 / 100)
-        oms_2026 = oms_2025 * (1 + tillväxt_2026 / 100)
-        oms_2027 = oms_2026 * (1 + tillväxt_2027 / 100)
-        målkurs = (oms_2027 / aktier) * ps_tal
+        if shares_outstanding is None or market_cap is None:
+            st.error("Kunde inte hämta aktiedata.")
+        else:
+            revenue_ttm = info.get("totalRevenue", None)
+            if revenue_ttm is None:
+                st.error("Kunde inte hämta TTM-omsättning.")
+            else:
+                ps_now = market_cap / revenue_ttm
 
-        ny_rad = pd.DataFrame([{
-            "Bolag": namn,
-            "Kurs": kurs,
-            "Oms_TTM": oms_ttm,
-            "Tillväxt 2025 (%)": tillväxt_2025,
-            "Tillväxt 2026 (%)": tillväxt_2026,
-            "Tillväxt 2027 (%)": tillväxt_2027,
-            "Antal aktier": aktier,
-            "P/S TTM": ps_tal,
-            "Målkurs 2027": round(målkurs, 2)
-        }])
+                # Hämta kvartalsvis omsättning
+                try:
+                    q_income = stock.quarterly_financials.loc["Total Revenue"]
+                    q_income = q_income.sort_index(ascending=False)
+                    q_income_values = q_income.values
 
-        df = pd.concat([df, ny_rad], ignore_index=True)
-        save_data(df)
-        st.success(f"{namn} har lagts till.")
-        st.experimental_rerun()
+                    if len(q_income_values) >= 4:
+                        ps_ttm_values = []
+                        for i in range(4):
+                            if i + 4 <= len(q_income_values):
+                                rolling_revenue = sum(q_income_values[i:i+4])
+                                price = stock.history(period="1d")["Close"][-1]
+                                ps = (price * shares_outstanding) / rolling_revenue
+                                ps_ttm_values.append(ps)
+
+                        ps_avg = sum(ps_ttm_values) / len(ps_ttm_values)
+                    else:
+                        ps_avg = ps_now  # fallback
+                except Exception as e:
+                    ps_avg = ps_now
+
+                # Hämta prognoser för 2025–2026 från 'earnings_trend'
+                try:
+                    growth_2025 = info.get("earningsGrowth", 0.1)  # fallback 10%
+                    growth_2026 = growth_2025  # approximera samma tillväxt
+                except:
+                    growth_2025 = growth_2026 = 0.1
+
+                # Tillväxtfaktorer
+                faktor_2025 = 1 + growth_2025
+                faktor_2026 = 1 + growth_2026
+                faktor_2027 = 1 + (tillväxt_2027 / 100)
+
+                revenue_2027 = revenue_ttm * faktor_2025 * faktor_2026 * faktor_2027
+                potential_price_2027 = (revenue_2027 / shares_outstanding) * ps_avg
+
+                st.subheader(f"💰 Potentiell målkurs för {ticker} år 2027:")
+                st.metric(label="Målkurs", value=f"{potential_price_2027:,.2f} {currency}")
+
+                # Spara till Google Sheet
+                new_row = {
+                    "Ticker": ticker,
+                    "Datum": datetime.date.today().isoformat(),
+                    "Nuvarande kurs": round(stock.history(period="1d")["Close"][-1], 2),
+                    "Valuta": currency,
+                    "Omsättning TTM": int(revenue_ttm),
+                    "Tillväxt 2025 (%)": round(growth_2025 * 100, 1),
+                    "Tillväxt 2026 (%)": round(growth_2026 * 100, 1),
+                    "Tillväxt 2027 (%)": tillväxt_2027,
+                    "Målkurs 2027": round(potential_price_2027, 2),
+                }
+
+                if df.empty:
+                    df = pd.DataFrame([new_row])
+                else:
+                    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
+                worksheet.clear()
+                worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+                st.success("✅ Analysen har sparats!")
+    except Exception as e:
+        st.error(f"Något gick fel under analysen: {e}")
+
+# Visa sparade analyser
+if not df.empty:
+    st.subheader("📊 Sparade analyser")
+    st.dataframe(df.sort_values(by="Målkurs 2027", ascending=False), use_container_width=True)
