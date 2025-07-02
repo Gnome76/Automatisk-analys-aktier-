@@ -2,85 +2,126 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
-# ---- Google Sheets setup ----
+# ===== Google Sheet-konfiguration =====
 SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
-CREDENTIALS_PATH = "/mnt/data/credentials.json"
+SHEET_NAME = "Data"  # Valfritt namn – byt till ditt kalkylbladsfliknamn om det är annat
 
-# Koppla till Google Sheet
-gc = gspread.service_account(filename=CREDENTIALS_PATH)
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+credentials = Credentials.from_service_account_file(
+    "/mnt/data/credentials.json",
+    scopes=scope
+)
+
+gc = gspread.authorize(credentials)
 sh = gc.open_by_key(SHEET_ID)
-worksheet = sh.sheet1
+worksheet = sh.worksheet(SHEET_NAME)
 
-# Läs in data
-try:
-    data = worksheet.get_all_records()
-    df = pd.DataFrame(data)
-except Exception as e:
-    st.error("Kunde inte läsa data från Google Sheet.")
-    st.stop()
+# ===== Funktioner =====
 
-# Hämta inmatning
-st.title("Automatisk aktieanalys – P/S-modell")
-ticker = st.text_input("Ange ticker (t.ex. AAPL eller MSFT)")
-growth_2027 = st.number_input("Förväntad tillväxt 2027 (%)", step=1.0, format="%.2f")
+def read_data():
+    try:
+        data = worksheet.get_all_records()
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Kunde inte läsa Google Sheet: {e}")
+        return pd.DataFrame()
 
-if st.button("Analysera bolag"):
-    if not ticker:
-        st.warning("Du måste ange en ticker.")
-    else:
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
+def save_data(df):
+    try:
+        worksheet.clear()
+        worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+    except Exception as e:
+        st.error(f"Kunde inte spara till Google Sheet: {e}")
 
-            # Hämta TTM-omsättning och antal aktier
-            ttm_revenue = info.get("totalRevenue")
-            shares_outstanding = info.get("sharesOutstanding")
-            currency = info.get("financialCurrency", "USD")
+def calculate_ps_ttm(ticker):
+    try:
+        ticker_data = yf.Ticker(ticker)
+        info = ticker_data.info
+        shares_out = info.get("sharesOutstanding")
+        market_cap = info.get("marketCap")
+        quarterly_rev = ticker_data.quarterly_financials.loc["Total Revenue"]
+        rev_ttm = quarterly_rev.iloc[:4].sum()
+        ps_ttm = market_cap / rev_ttm if rev_ttm and shares_out else None
+        return ps_ttm, rev_ttm, market_cap, shares_out
+    except:
+        return None, None, None, None
 
-            if ttm_revenue and shares_outstanding:
-                # Tillväxtberäkningar
-                growth_factor = 1 + growth_2027 / 100
-                est_revenue_2027 = ttm_revenue * growth_factor
+def calculate_target_price(rev_2027, shares, avg_ps):
+    try:
+        return (rev_2027 / shares) * avg_ps
+    except:
+        return None
 
-                # Kursdata från senaste 4 kvartal
-                hist = stock.history(period="1y", interval="3mo")
-                ps_values = []
-                for i in range(len(hist)):
-                    price = hist["Close"].iloc[i]
-                    if i >= 3:
-                        revs = []
-                        for j in range(i - 3, i + 1):
-                            q = stock.quarterly_financials
-                            rev = q.iloc[:, j].sum() if not q.empty else None
-                            if rev:
-                                revs.append(rev)
-                        ttm_q_revenue = sum(revs)
-                        if ttm_q_revenue and shares_outstanding:
-                            ps = (price * shares_outstanding) / ttm_q_revenue
-                            ps_values.append(ps)
+# ===== Gränssnitt =====
 
-                avg_ps = sum(ps_values) / len(ps_values) if ps_values else 5
-                target_price = (est_revenue_2027 / shares_outstanding) * avg_ps
+st.title("📈 Automatisk Aktievärdering – 2027 P/S-analys")
 
-                # Visa resultat
-                st.success(f"Beräknad målkurs för {ticker.upper()} år 2027: {target_price:.2f} {currency}")
+df = read_data()
 
-                # Lägg till i Google Sheet
-                new_row = {
-                    "Ticker": ticker.upper(),
-                    "Tillväxt 2027 (%)": growth_2027,
-                    "Valuta": currency,
-                    "Omsättning (TTM)": ttm_revenue,
-                    "Antal aktier": shares_outstanding,
-                    "Snitt P/S (TTM)": round(avg_ps, 2),
-                    "Beräknad målkurs 2027": round(target_price, 2),
-                }
-                worksheet.append_row(list(new_row.values()))
-                st.info("Resultat sparat i Google Sheets.")
+# === Formulär för nytt bolag ===
+with st.expander("➕ Lägg till nytt bolag"):
+    with st.form("add_company"):
+        ticker = st.text_input("Ticker (t.ex. AAPL)")
+        growth_2025 = st.number_input("Förväntad tillväxt 2025 (%)", value=10.0)
+        growth_2026 = st.number_input("Förväntad tillväxt 2026 (%)", value=10.0)
+        growth_2027 = st.number_input("Förväntad tillväxt 2027 (%)", value=10.0)
+        submit = st.form_submit_button("Lägg till")
 
-            else:
-                st.error("Kunde inte hämta finansiell data för bolaget.")
-        except Exception as e:
-            st.error(f"Ett fel uppstod: {e}")
+    if submit and ticker:
+        avg_ps, rev_ttm, market_cap, shares_out = calculate_ps_ttm(ticker)
+        if not all([avg_ps, rev_ttm, market_cap, shares_out]):
+            st.warning("Kunde inte hämta data från Yahoo Finance.")
+        else:
+            rev_2025 = rev_ttm * (1 + growth_2025 / 100)
+            rev_2026 = rev_2025 * (1 + growth_2026 / 100)
+            rev_2027 = rev_2026 * (1 + growth_2027 / 100)
+            target_price = calculate_target_price(rev_2027, shares_out, avg_ps)
+
+            new_row = {
+                "Ticker": ticker,
+                "Tillväxt 2025 (%)": growth_2025,
+                "Tillväxt 2026 (%)": growth_2026,
+                "Tillväxt 2027 (%)": growth_2027,
+                "Omsättning TTM": rev_ttm,
+                "Antal aktier": shares_out,
+                "P/S TTM": round(avg_ps, 2),
+                "Målkurs 2027": round(target_price, 2)
+            }
+
+            df = df.append(new_row, ignore_index=True)
+            save_data(df)
+            st.success("Bolag tillagt!")
+
+# === Visa ett bolag i taget ===
+if not df.empty:
+    df["Undervärdering (%)"] = df["Målkurs 2027"] / yf.download(df["Ticker"].tolist(), period="1d")["Adj Close"].iloc[-1].values * 100 - 100
+    df = df.sort_values(by="Undervärdering (%)", ascending=False).reset_index(drop=True)
+
+    if "index" not in st.session_state:
+        st.session_state.index = 0
+
+    i = st.session_state.index
+    bolag = df.iloc[i]
+
+    st.markdown(f"### {bolag['Ticker']}")
+    st.metric("Målkurs 2027", f"{bolag['Målkurs 2027']:.2f}")
+    st.metric("P/S TTM", f"{bolag['P/S TTM']:.2f}")
+    st.metric("Tillväxt 2025–2027 (%)", f"{bolag['Tillväxt 2025 (%)']} / {bolag['Tillväxt 2026 (%)']} / {bolag['Tillväxt 2027 (%)']}")
+    st.metric("Undervärdering (%)", f"{bolag['Undervärdering (%)']:.1f} %")
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("⬅️ Föregående") and i > 0:
+            st.session_state.index -= 1
+    with col2:
+        if st.button("➡️ Nästa") and i < len(df) - 1:
+            st.session_state.index += 1
+
+else:
+    st.info("Inga bolag tillagda ännu.")
