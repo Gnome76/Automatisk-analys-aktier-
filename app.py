@@ -1,121 +1,78 @@
-import os
 import streamlit as st
-import pandas as pd
-import yfinance as yf
-from google.oauth2.service_account import Credentials
 import gspread
+from google.oauth2.service_account import Credentials
+import pandas as pd
 
-# Steg 1: Kontrollera och lista /mnt/data/
-data_folder = "/mnt/data"
-if not os.path.exists(data_folder):
-    try:
-        os.makedirs(data_folder)
-    except PermissionError:
-        st.error("🚫 Kunde inte skapa /mnt/data – saknar behörighet.")
-    except Exception as e:
-        st.error(f"⚠️ Okänt fel vid skapande av /mnt/data: {e}")
+# Ange ID för ditt Google Sheet (från länken)
+SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"
+SHEET_NAME = "Ark1"
 
-try:
-    st.write("📁 Innehåll i /mnt/data/:", os.listdir(data_folder))
-except FileNotFoundError:
-    st.error("❌ Mappen /mnt/data finns inte.")
-except PermissionError:
-    st.error("🚫 Saknar behörighet att läsa /mnt/data.")
+# Autentisering – credentials.json ligger i projektroten
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+credentials_path = "credentials.json"
+credentials = Credentials.from_service_account_file(credentials_path, scopes=scope)
+gc = gspread.authorize(credentials)
+sh = gc.open_by_key(SHEET_ID)
+worksheet = sh.worksheet(SHEET_NAME)
 
-# Steg 2: Autentisera mot Google Sheets
-scope = ["https://www.googleapis.com/auth/spreadsheets"]
-credentials_path = os.path.join(data_folder, "credentials.json")
+# Ladda data från Google Sheets
+def load_data():
+    records = worksheet.get_all_records()
+    return pd.DataFrame(records)
 
-if not os.path.isfile(credentials_path):
-    st.error("❌ credentials.json saknas i /mnt/data/. Ladda upp den via 'Files' i Streamlit Cloud.")
-    st.stop()
+# Spara data till Google Sheets
+def save_data(df):
+    worksheet.clear()
+    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
 
-try:
-    credentials = Credentials.from_service_account_file(
-        credentials_path, scopes=scope
-    )
-    gc = gspread.authorize(credentials)
-except Exception as e:
-    st.error(f"❌ Fel vid inläsning av credentials.json: {e}")
-    st.stop()
+# Streamlit UI
+st.title("📈 Automatisk aktieanalys")
 
-# Steg 3: Öppna kalkylarket
-SHEET_ID = "1-IGWQacBAGo2nIDhTrCWZ9c3tJgm_oY0vRsWIzjG5Yo"  # Ditt Google Sheet-ID
-try:
-    sh = gc.open_by_key(SHEET_ID)
-    worksheet = sh.sheet1
-    data = worksheet.get_all_records()
-    df = pd.DataFrame(data)
-except Exception as e:
-    st.error(f"❌ Kunde inte läsa Google Sheet: {e}")
-    df = pd.DataFrame()
+# Ladda nuvarande data
+df = load_data()
 
-# Steg 4: Lägg till nytt bolag
-st.header("📈 Lägg till bolag för analys")
-
-ticker = st.text_input("Ange ticker (t.ex. AAPL)")
-growth_2025 = st.number_input("Förväntad tillväxt 2025 (%)", value=10.0)
-growth_2026 = st.number_input("Förväntad tillväxt 2026 (%)", value=10.0)
-growth_2027 = st.number_input("Förväntad tillväxt 2027 (%)", value=10.0)
-
-if st.button("Analysera och spara"):
-    if not ticker:
-        st.warning("❗ Ange en ticker.")
-    else:
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            hist = stock.history(period="1y", interval="1d")
-            price_now = hist["Close"].iloc[-1]
-            shares = info.get("sharesOutstanding")
-            currency = info.get("currency", "USD")
-            quarterly = stock.quarterly_financials
-            revenues = quarterly.loc["Total Revenue"].dropna()
-
-            if len(revenues) >= 4 and shares:
-                ttm_revenue = revenues.iloc[:4].sum()
-                market_cap = price_now * shares
-                ps_ttm = market_cap / ttm_revenue
-                growth_factor = (1 + growth_2025 / 100) * (1 + growth_2026 / 100) * (1 + growth_2027 / 100)
-                est_2027_revenue = ttm_revenue * growth_factor
-                price_target = (est_2027_revenue / shares) * ps_ttm
-
-                st.success(f"{ticker} ({currency}) – Målkurs 2027: {price_target:.2f}")
-                st.write(f"📌 Nuvarande kurs: {price_now:.2f}")
-                st.write(f"📊 P/S (TTM): {ps_ttm:.2f}")
-                st.write(f"📈 TTM-omsättning: {ttm_revenue:,.0f}")
-
-                # Lägg till i DataFrame
-                new_row = {
-                    "Ticker": ticker,
-                    "Price now": price_now,
-                    "Shares": shares,
-                    "Currency": currency,
-                    "TTM Revenue": ttm_revenue,
-                    "P/S TTM": ps_ttm,
-                    "Growth 2025": growth_2025,
-                    "Growth 2026": growth_2026,
-                    "Growth 2027": growth_2027,
-                    "Est. Revenue 2027": est_2027_revenue,
-                    "Target price 2027": price_target
-                }
-
-                df = df.append(new_row, ignore_index=True)
-                # Spara till Google Sheet
-                try:
-                    worksheet.clear()
-                    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
-                    st.success("✅ Data sparad till Google Sheets.")
-                except Exception as e:
-                    st.error(f"❌ Kunde inte spara till Google Sheet: {e}")
-            else:
-                st.warning("⚠️ Kunde inte hämta tillräckligt med data för analys.")
-        except Exception as e:
-            st.error(f"❌ Fel vid analys: {e}")
-
-# Steg 5: Visa befintlig data
-if not df.empty:
-    st.subheader("📋 Analysdata")
-    st.dataframe(df)
+# Visa nuvarande bolag
+st.subheader("📊 Nuvarande analyser")
+if df.empty:
+    st.info("Inga bolag har lagts till ännu.")
 else:
-    st.info("Ingen data att visa ännu.")
+    st.dataframe(df)
+
+# Formulär för att lägga till nytt bolag
+st.subheader("➕ Lägg till nytt bolag")
+with st.form("add_company_form"):
+    namn = st.text_input("Bolagsnamn")
+    kurs = st.number_input("Nuvarande aktiekurs", min_value=0.0)
+    oms_ttm = st.number_input("Omsättning TTM", min_value=0.0)
+    aktier = st.number_input("Antal aktier", min_value=1.0)
+    tillväxt_2025 = st.number_input("Tillväxt 2025 (%)", value=0.0)
+    tillväxt_2026 = st.number_input("Tillväxt 2026 (%)", value=0.0)
+    tillväxt_2027 = st.number_input("Tillväxt 2027 (%)", value=0.0)
+    ps_tal = st.number_input("Genomsnittligt P/S TTM", min_value=0.0)
+    submit = st.form_submit_button("Lägg till bolag")
+
+    if submit and namn:
+        oms_2025 = oms_ttm * (1 + tillväxt_2025 / 100)
+        oms_2026 = oms_2025 * (1 + tillväxt_2026 / 100)
+        oms_2027 = oms_2026 * (1 + tillväxt_2027 / 100)
+        målkurs = (oms_2027 / aktier) * ps_tal
+
+        ny_rad = pd.DataFrame([{
+            "Bolag": namn,
+            "Kurs": kurs,
+            "Oms_TTM": oms_ttm,
+            "Tillväxt 2025 (%)": tillväxt_2025,
+            "Tillväxt 2026 (%)": tillväxt_2026,
+            "Tillväxt 2027 (%)": tillväxt_2027,
+            "Antal aktier": aktier,
+            "P/S TTM": ps_tal,
+            "Målkurs 2027": round(målkurs, 2)
+        }])
+
+        df = pd.concat([df, ny_rad], ignore_index=True)
+        save_data(df)
+        st.success(f"{namn} har lagts till.")
+        st.experimental_rerun()
