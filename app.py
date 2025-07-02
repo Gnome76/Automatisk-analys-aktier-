@@ -1,5 +1,16 @@
 import streamlit as st
 import os
+
+# Tillfällig filuppladdning (visas bara om credentials.json saknas i /mnt/data/)
+if "credentials.json" not in os.listdir("/mnt/data/"):
+    uploaded_file = st.file_uploader("⬆️ Ladda upp credentials.json", type="json")
+    if uploaded_file:
+        with open("/mnt/data/credentials.json", "wb") as f:
+            f.write(uploaded_file.read())
+        st.success("✅ Filen är nu uppladdad! Starta om appen.")
+        st.stop()
+        import streamlit as st
+import os
 import pandas as pd
 import yfinance as yf
 import gspread
